@@ -14,26 +14,30 @@ import matplotlib.pyplot as plt
 
 
 def main():
-    base_path = 'C:/Users/Dylan/Research/smd_calibration/'
-    run_dirs = ['20240229-pulsar']
-    process_data(base_path, run_dirs)
+    # base_path = 'C:/Users/Dylan/Research/smd_calibration/'
+    base_path = '/local/home/dn277127/Documents/smd_calibration/'
+    run_dirs = ['20240301-chA', '20240301-chB']
+    channels = [0]
+    process_data(base_path, run_dirs, channels)
     plt.show()
     print('donzo')
 
 
-def process_data(base_path, run_dirs):
+def process_data(base_path, run_dirs, channels):
     for run_dir in run_dirs:
-        process_run(base_path + run_dir)
+        process_run(base_path + run_dir, channels)
 
 
-def process_run(run_dir, n_chan=4, amplitude_out_file='amplitudes.txt'):
+def process_run(run_dir, channels=None, amplitude_out_file='amplitudes.txt'):
     """
 
     :param run_dir:
-    :param n_chan:
+    :param channels:
     :param amplitude_out_file:
     :return:
     """
+    if channels is None:
+        channels = [0, 1, 2, 3]
     channel_amplitudes = []
     for waveform_file in os.listdir(run_dir):
         print(waveform_file)
@@ -44,13 +48,14 @@ def process_run(run_dir, n_chan=4, amplitude_out_file='amplitudes.txt'):
             wavform_transpose = waveform_data.T
             # time = wavform_transpose[0]
             waveform_channels = wavform_transpose[1:]
-            for i in range(n_chan):
+            for chan_i in channels:
                 # amplitude = analyze_waveform(waveform_channels[i], plot=i==0)
-                amplitude = analyze_waveform(waveform_channels[i])
+                amplitude = analyze_waveform(waveform_channels[chan_i])
                 channel_amplitudes[-1].append(amplitude)
 
     channel_amplitudes = np.array(channel_amplitudes).T
-    plot_amplitude_distribution(channel_amplitudes, n_chan=1)
+    title = run_dir.split('/')[-1]
+    plot_amplitude_distribution(channel_amplitudes, channels, title)
     write_amplitudes(channel_amplitudes, run_dir, amplitude_out_file)
 
 
@@ -111,13 +116,17 @@ def plot_waveforms(wavform_data, n_chan=4):
     ax.legend()
 
 
-def plot_amplitude_distribution(channel_amplitudes, n_chan=4):
+def plot_amplitude_distribution(channel_amplitudes, channels=None, title=None):
+    if channels is None:
+        channels = [0, 1, 2, 3]
     fig, ax = plt.subplots()
-    for i in range(n_chan):
-        ax.hist(channel_amplitudes[i], bins=20, label=f'Channel {i}', alpha=0.5)
-        ax.axvline(np.mean(channel_amplitudes[i]), color='r', linestyle='--', label=f'Channel {i} Mean')
+    for chan_i in channels:
+        ax.hist(channel_amplitudes[chan_i], bins=20, label=f'Channel {chan_i}', alpha=0.5)
+        ax.axvline(np.mean(channel_amplitudes[chan_i]), color='r', linestyle='--', label=f'Channel {chan_i} Mean')
     ax.set_xlabel('Signal Amplitude (V)')
-    ax.set_xlim(-0.8, 0.1)
+    # ax.set_xlim(-0.8, 0.1)
+    if title is not None:
+        ax.set_title(title)
     ax.grid()
     ax.legend()
     fig.tight_layout()
