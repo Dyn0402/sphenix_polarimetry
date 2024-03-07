@@ -20,27 +20,43 @@ import istarmap  # This is a custom module that adds starmap to multiprocessing.
 
 
 def main():
-    # base_path = 'C:/Users/Dylan/Research/smd_calibration/'
-    base_path = 'C:/Users/Dylan/Research/smd_calibration/march6_SouthSMD/'
-    # base_path = '/local/home/dn277127/Documents/smd_calibration/'
+    # base_path = 'C:/Users/Dylan/Research/smd_calibration/march6_SouthSMD/'
+    base_path = '/local/home/dn277127/Documents/smd_calibration/march6_SouthSMD/'
+    fig_save_dir = '/local/home/dn277127/Documents/smd_calibration/plots/'
     # run_dirs = ['20240301-chA', '20240301-chB']
     # run_dirs = ['20240301-pp1_h1', '20240301-pp2_h2', '20240301-pp3_h3', '20240301-pp4_h4', '20240301-pp5_h5']
-    run_dirs = ['20240306-s-ch13', '20240306-s-ch13-wsource-nolead', '20240306-s-bg-ch13']
+    run_dirs = ['20240306-s-ch13']
+    bkg_dirs = ['20240306-s-bg-ch13']
+    sig_dirs = ['20240306-s-ch13', '20240306-s-ch13-wsource-nolead']
     # run_dirs = os.listdir(base_path)
     channels = [0]
-    reprocess = False
-    threads = 8
-    process_data(base_path, run_dirs, channels, reprocess, threads)
+    reprocess = True
+    threads = 1
+    process_data(base_path, run_dirs, channels, reprocess, threads, fig_save_dir)
+
+    smd_channels, gaus_centers = [], []
+    for i in range(1, 16):
+        if i == 7 or i == 15:
+            continue
+        bkg_dir = f'20240306-s-bg-ch{i}'
+        sig_dir = f'20240306-s-ch{i}'
+        run_dirs = [bkg_dir] + [sig_dir]
+        # process_data(base_path, run_dirs, channels, reprocess, threads, fig_save_dir)
+        # gaus_center = data_analaysis(base_path, sig_dir, bkg_dir, channels, fig_save_dir)[0]
+        # smd_channels.append(i)
+        # gaus_centers.append(gaus_center)
+        analyze_pulse_shapes(base_path, run_dirs, channels, fig_save_dir)
+    # plot_peaks(smd_channels, gaus_centers, fig_save_dir)
     # convert_to_csv(base_path, run_dirs)
     # analyze_baselines(base_path, run_dirs, channels)
-    analyze_pulse_shapes(base_path, run_dirs, channels)
+    # analyze_pulse_shapes(base_path, run_dirs, channels)
     plt.show()
     print('donzo')
 
 
-def process_data(base_path, run_dirs, channels, reprocess=False, threads=8):
+def process_data(base_path, run_dirs, channels, reprocess=False, threads=8, fig_save_dir=None):
     for run_dir in run_dirs:
-        process_run(base_path + run_dir, channels, reprocess=reprocess, threads=threads)
+        process_run(base_path + run_dir, channels, reprocess=reprocess, threads=threads, fig_save_dir=fig_save_dir)
 
 
 def analyze_baselines(base_path, run_dirs, channels=None):
@@ -68,19 +84,19 @@ def analyze_baselines(base_path, run_dirs, channels=None):
     plot_baseline_distribution(baselines, title=f'Baseline Distribution')
 
 
-def analyze_pulse_shapes(base_path, run_dirs, channels=None):
+def analyze_pulse_shapes(base_path, run_dirs, channels=None, fig_save_dir=None):
     """
 
     :param base_path:
     :param run_dirs:
     :param channels:
+    :param fig_save_dir:
     :return:
     """
     threads = 8
     amplitude_out_file = 'amplitudes.txt'
     if channels is None:
         channels = [0, 1, 2, 3]
-    amps_sums = {chan_i: [] for chan_i in channels}
     for run_dir in run_dirs:
         run_dir = base_path + run_dir
         channel_amplitudes, channel_sums = [], []
@@ -94,15 +110,18 @@ def analyze_pulse_shapes(base_path, run_dirs, channels=None):
         channel_sums = np.array(channel_sums).T
         print(f'Channel Amplitudes: {channel_amplitudes}')
         print(f'Channel Sums: {channel_sums}')
-        plot_amp_sums(channel_amplitudes, channel_sums, channels, run_dir.split('/')[-1])
+        plot_amp_sums(channel_amplitudes, channel_sums, channels, run_dir.split('/')[-1], fig_save_dir)
 
 
-def process_run(run_dir, channels=None, amplitude_out_file='amplitudes.txt', reprocess=False, threads=8):
+def process_run(run_dir, channels=None, amplitude_out_file='amplitudes.txt', reprocess=False, threads=8,
+                fig_save_dir=None):
     """
     :param run_dir:
     :param channels:
     :param amplitude_out_file:
     :param reprocess:
+    :param threads:
+    :param fig_save_dir:
     :return:
     """
     print(f'Processing {run_dir}...')
@@ -123,7 +142,71 @@ def process_run(run_dir, channels=None, amplitude_out_file='amplitudes.txt', rep
 
     print(channel_amplitudes)
     title = run_dir.split('/')[-1]
-    plot_amplitude_distribution(channel_amplitudes, channels, title)
+    plot_amplitude_distribution(channel_amplitudes, channels, title, False, fig_save_dir)
+
+
+def data_analaysis(base_path, run_dir, bkg_dir, channels=None, fig_save_dir=None):
+    """
+
+    :param base_path:
+    :param run_dir:
+    :param bkg_dir:
+    :param channels:
+    :param fig_save_dir:
+    :return:
+    """
+    amplitude_out_file = 'amplitudes.txt'
+    if channels is None:
+        channels = [0, 1, 2, 3]
+    channel_amplitudes = read_amplitudes(base_path + run_dir, amplitude_out_file)
+    bkg_amplitudes = read_amplitudes(base_path + bkg_dir, amplitude_out_file)
+    gaus_centers = {}
+    for chan_i in channels:
+        sig_amps = -np.array(channel_amplitudes[chan_i])
+        bkg_amps = -np.array(bkg_amplitudes[chan_i])
+        min_edge = min(min(sig_amps), min(bkg_amps))
+        max_edge = max(max(sig_amps), max(bkg_amps))
+        bin_edges = np.linspace(min_edge, max_edge, 20)
+        bkg_hist, bkg_bin_edges = np.histogram(bkg_amps, bins=bin_edges)
+        sig_hist, sig_bin_edges = np.histogram(sig_amps, bins=bin_edges)
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        corrected_sig_hist = sig_hist - bkg_hist
+        fig, ax = plt.subplots(figsize=(6.66, 5.2), dpi=144)
+        ax.step(bin_centers, corrected_sig_hist, where='mid', label='Corrected Signal', color='red', lw=3)
+        ax.bar(bin_centers, sig_hist, width=(bin_edges[1] - bin_edges[0]), label='Signal', alpha=0.5,
+               align='center', color='blue')
+        ax.bar(bin_centers, bkg_hist, width=(bin_edges[1] - bin_edges[0]), label='Background', alpha=0.5,
+               align='center', color='gray')
+        ax.set_xlabel('Signal Amplitude (mV)')
+        ax.set_ylabel('Counts')
+        ax.set_title(f'{run_dir}')
+        ax.grid()
+        ax.legend()
+        fig.tight_layout()
+
+        fig2, ax2 = plt.subplots(figsize=(6.66, 5.2), dpi=144)
+        ax2.bar(bin_centers, corrected_sig_hist, width=(bin_edges[1] - bin_edges[0]), label='Corrected Signal',
+                alpha=0.5, align='center', color='blue')
+        weights = np.where(corrected_sig_hist > 0, corrected_sig_hist, 0)
+        p0 = [np.max(corrected_sig_hist), np.average(bin_centers, weights=weights), 20]
+        popt, pcov = cf(gaussian, bin_centers, corrected_sig_hist, p0=p0)
+        x_plot = np.linspace(min_edge, max_edge, 1000)
+        ax2.plot(x_plot, gaussian(x_plot, *p0), label='Guess', color='Gray')
+        ax2.plot(x_plot, gaussian(x_plot, *popt), label='Fit', color='red')
+        ax2.set_xlabel('Signal Amplitude (mV)')
+        ax2.set_ylabel('Counts')
+        ax2.set_title(f'Corrected Spectrum Fit: {run_dir}')
+        ax2.grid()
+        ax2.legend()
+        fig2.tight_layout()
+
+        if fig_save_dir is not None:
+            fig.savefig(f'{fig_save_dir}{run_dir}_spectrum.png')
+            fig2.savefig(f'{fig_save_dir}{run_dir}_spectrum_fit.png')
+
+        gaus_centers.update({chan_i: popt[1]})
+
+    return gaus_centers
 
 
 def process_waveform(waveform_file, run_dir, amplitude_out_file, channels=None, max_amp=55, return_sums=False):
@@ -134,7 +217,7 @@ def process_waveform(waveform_file, run_dir, amplitude_out_file, channels=None, 
         waveform_transpose = waveform_data.T
         waveform_channels = waveform_transpose[1:]
         for chan_i in channels:
-            amplitude = analyze_waveform(waveform_channels[chan_i], plot=False)
+            amplitude = analyze_waveform(waveform_channels[chan_i], plot=True)
             if np.isinf(amplitude):
                 print(f'Inf amplitude in {waveform_file}')
             channel_amplitudes.append(amplitude)
@@ -225,11 +308,11 @@ def plot_waveforms(wavform_data, n_chan=4):
     ax.legend()
 
 
-def plot_amplitude_distribution(channel_amplitudes, channels=None, title=None, fit=False):
+def plot_amplitude_distribution(channel_amplitudes, channels=None, title=None, fit=False, fig_save_dir=None):
     n_bins = max(len(channel_amplitudes[0]) // 500, 20)
     if channels is None:
         channels = [0, 1, 2, 3]
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(6.66, 5.2), dpi=144)
     for chan_i in channels:
         # ax.hist(channel_amplitudes[chan_i], bins=20, label=f'Channel {chan_i}', alpha=0.5)
         amps = -channel_amplitudes[chan_i]  # Make positive
@@ -258,7 +341,7 @@ def plot_amplitude_distribution(channel_amplitudes, channels=None, title=None, f
     ax.legend()
     fig.tight_layout()
 
-    fig2, ax2 = plt.subplots()
+    fig2, ax2 = plt.subplots(figsize=(6.66, 5.2), dpi=144)
     for chan_i in channels:
         amps = -channel_amplitudes[chan_i]  # Make positive
         hist, bins = np.histogram(amps, bins=20)
@@ -269,6 +352,8 @@ def plot_amplitude_distribution(channel_amplitudes, channels=None, title=None, f
     if title is not None:
         ax2.set_title(title)
     fig2.tight_layout()
+    if fig_save_dir is not None:
+        fig2.savefig(f'{fig_save_dir}{title}_hist_kde.png')
 
 
 def plot_baseline_distribution(baselines, title=None):
@@ -296,8 +381,8 @@ def convert_to_csv(base_path, run_dirs):
                     file.write(text)
 
 
-def plot_amp_sums(channel_amplitudes, channel_sums, channels, title):
-    fig, ax = plt.subplots()
+def plot_amp_sums(channel_amplitudes, channel_sums, channels, title, fig_save_dir=None):
+    fig, ax = plt.subplots(figsize=(6.66, 5.2), dpi=144)
     for chan_i in channels:
         ax.scatter(channel_amplitudes[chan_i], channel_sums[chan_i], alpha=0.2, label=f'Channel {chan_i}')
     ax.set_xlabel('Signal Amplitude (mV)')
@@ -307,7 +392,7 @@ def plot_amp_sums(channel_amplitudes, channel_sums, channels, title):
     ax.legend()
     fig.tight_layout()
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(6.66, 5.2), dpi=144)
 
     # Plot two-dimensional histogram density heatmap
     h, xedges, yedges, img = ax.hist2d(channel_amplitudes[0], channel_sums[0], bins=100, density=False, cmin=1,
@@ -319,6 +404,22 @@ def plot_amp_sums(channel_amplitudes, channel_sums, channels, title):
     fig.colorbar(img, ax=ax)
     ax.grid()
     fig.tight_layout()
+    if fig_save_dir is not None:
+        fig.savefig(f'{fig_save_dir}{title}_amp_sum.png')
+
+
+def plot_peaks(smd_channels, gaus_centers, fig_save_dir):
+    fig, ax = plt.subplots(figsize=(6.66, 5.2), dpi=144)
+    ax.scatter(smd_channels, gaus_centers)
+    ax.set_xlabel('SMD Channel')
+    ax.set_ylabel('Gaussian Center (mV)')
+    ax.set_title('Gaussian Center vs SMD Channel')
+    ax.axhline(0, color='black', linestyle='-')
+    ax.axhline(100, color='black', linestyle='-')
+    ax.axhline(np.mean(gaus_centers), color='red', alpha=0.3, linestyle='-', label='Mean')
+    ax.legend(loc='upper left')
+    fig.tight_layout()
+    fig.savefig(f'{fig_save_dir}gaus_center_vs_smd_chan.png')
 
 
 def gaussian(x, a, mu, sig):
