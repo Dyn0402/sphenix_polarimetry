@@ -20,16 +20,17 @@ import istarmap  # This is a custom module that adds starmap to multiprocessing.
 
 
 def main():
-    base_path = 'C:/Users/Dylan/Research/smd_calibration/'
+    # base_path = 'C:/Users/Dylan/Research/smd_calibration/'
+    base_path = 'C:/Users/Dylan/Research/smd_calibration/march6_SouthSMD/'
     # base_path = '/local/home/dn277127/Documents/smd_calibration/'
     # run_dirs = ['20240301-chA', '20240301-chB']
     # run_dirs = ['20240301-pp1_h1', '20240301-pp2_h2', '20240301-pp3_h3', '20240301-pp4_h4', '20240301-pp5_h5']
-    run_dirs = ['20240304-cosmicnorth']
+    run_dirs = ['20240306-s-ch13', '20240306-s-ch13-wsource-nolead', '20240306-s-bg-ch13']
     # run_dirs = os.listdir(base_path)
     channels = [0]
     reprocess = False
     threads = 8
-    # process_data(base_path, run_dirs, channels, reprocess, threads)
+    process_data(base_path, run_dirs, channels, reprocess, threads)
     # convert_to_csv(base_path, run_dirs)
     # analyze_baselines(base_path, run_dirs, channels)
     analyze_pulse_shapes(base_path, run_dirs, channels)
@@ -265,6 +266,8 @@ def plot_amplitude_distribution(channel_amplitudes, channels=None, title=None, f
         sns.histplot(amps, bins=n_bins, kde=True, ax=ax2, label=f'Channel {chan_i}', alpha=0.5)
         sns.rugplot(amps, ax=ax2, color='gray', alpha=0.5)
     ax2.set_xlabel('Signal Amplitude (mV)')
+    if title is not None:
+        ax2.set_title(title)
     fig2.tight_layout()
 
 
@@ -316,8 +319,6 @@ def plot_amp_sums(channel_amplitudes, channel_sums, channels, title):
     fig.colorbar(img, ax=ax)
     ax.grid()
     fig.tight_layout()
-
-    plt.show()
 
 
 def gaussian(x, a, mu, sig):
