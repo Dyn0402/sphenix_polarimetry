@@ -20,9 +20,12 @@ import istarmap  # This is a custom module that adds starmap to multiprocessing.
 
 
 def main():
-    # base_path = 'C:/Users/Dylan/Research/smd_calibration/march6_SouthSMD/'
-    base_path = '/local/home/dn277127/Documents/smd_calibration/march6_SouthSMD/'
-    fig_save_dir = '/local/home/dn277127/Documents/smd_calibration/plots/'
+    side = 'North'
+    base_path = f'C:/Users/Dylan/Research/smd_calibration/march6_{side}SMD/'
+    fig_save_dir = 'C:/Users/Dylan/Research/smd_calibration/plots/'
+    south_let = 's-' if side == 'South' else ''
+    # base_path = '/local/home/dn277127/Documents/smd_calibration/march6_SouthSMD/'
+    # fig_save_dir = '/local/home/dn277127/Documents/smd_calibration/plots/'
     # run_dirs = ['20240301-chA', '20240301-chB']
     # run_dirs = ['20240301-pp1_h1', '20240301-pp2_h2', '20240301-pp3_h3', '20240301-pp4_h4', '20240301-pp5_h5']
     run_dirs = ['20240306-s-ch13']
@@ -31,21 +34,19 @@ def main():
     # run_dirs = os.listdir(base_path)
     channels = [0]
     reprocess = True
-    threads = 1
-    process_data(base_path, run_dirs, channels, reprocess, threads, fig_save_dir)
+    threads = 15
+    # process_data(base_path, run_dirs, channels, reprocess, threads, fig_save_dir)
 
     smd_channels, gaus_centers = [], []
     for i in range(1, 16):
-        if i == 7 or i == 15:
-            continue
-        bkg_dir = f'20240306-s-bg-ch{i}'
-        sig_dir = f'20240306-s-ch{i}'
+        bkg_dir = f'20240306-{south_let}bg-ch{i}'
+        sig_dir = f'20240306-{south_let}ch{i}'
         run_dirs = [bkg_dir] + [sig_dir]
-        # process_data(base_path, run_dirs, channels, reprocess, threads, fig_save_dir)
+        process_data(base_path, run_dirs, channels, reprocess, threads, fig_save_dir)
         # gaus_center = data_analaysis(base_path, sig_dir, bkg_dir, channels, fig_save_dir)[0]
         # smd_channels.append(i)
         # gaus_centers.append(gaus_center)
-        analyze_pulse_shapes(base_path, run_dirs, channels, fig_save_dir)
+        # analyze_pulse_shapes(base_path, run_dirs, channels, fig_save_dir)
     # plot_peaks(smd_channels, gaus_centers, fig_save_dir)
     # convert_to_csv(base_path, run_dirs)
     # analyze_baselines(base_path, run_dirs, channels)
@@ -94,6 +95,7 @@ def analyze_pulse_shapes(base_path, run_dirs, channels=None, fig_save_dir=None):
     :return:
     """
     threads = 8
+    max_amp = 105
     amplitude_out_file = 'amplitudes.txt'
     if channels is None:
         channels = [0, 1, 2, 3]
@@ -101,7 +103,7 @@ def analyze_pulse_shapes(base_path, run_dirs, channels=None, fig_save_dir=None):
         run_dir = base_path + run_dir
         channel_amplitudes, channel_sums = [], []
         with Pool(threads) as pool:
-            jobs = [(file, run_dir, amplitude_out_file, channels, 55, True) for file in os.listdir(run_dir)
+            jobs = [(file, run_dir, amplitude_out_file, channels, max_amp, True) for file in os.listdir(run_dir)
                     if file.endswith('.csv') and file != amplitude_out_file]
             for channel_amps, chan_sums in tqdm.tqdm(pool.istarmap(process_waveform, jobs), total=len(jobs)):
                 channel_amplitudes.append(channel_amps)
@@ -124,6 +126,7 @@ def process_run(run_dir, channels=None, amplitude_out_file='amplitudes.txt', rep
     :param fig_save_dir:
     :return:
     """
+    max_amp = 120
     print(f'Processing {run_dir}...')
     if channels is None:
         channels = [0, 1, 2, 3]
@@ -133,14 +136,14 @@ def process_run(run_dir, channels=None, amplitude_out_file='amplitudes.txt', rep
     else:
         channel_amplitudes = []
         with Pool(threads) as pool:
-            jobs = [(file, run_dir, amplitude_out_file, channels) for file in os.listdir(run_dir)
+            jobs = [(file, run_dir, amplitude_out_file, channels, max_amp) for file in os.listdir(run_dir)
                     if file.endswith('.csv') and file != amplitude_out_file]
             for channel_amps in tqdm.tqdm(pool.istarmap(process_waveform, jobs), total=len(jobs)):
                 channel_amplitudes.append(channel_amps)
         channel_amplitudes = np.array(channel_amplitudes).T
         write_amplitudes(channel_amplitudes, run_dir, amplitude_out_file)
 
-    print(channel_amplitudes)
+    # print(channel_amplitudes)
     title = run_dir.split('/')[-1]
     plot_amplitude_distribution(channel_amplitudes, channels, title, False, fig_save_dir)
 
@@ -185,17 +188,17 @@ def data_analaysis(base_path, run_dir, bkg_dir, channels=None, fig_save_dir=None
         fig.tight_layout()
 
         fig2, ax2 = plt.subplots(figsize=(6.66, 5.2), dpi=144)
-        ax2.bar(bin_centers, corrected_sig_hist, width=(bin_edges[1] - bin_edges[0]), label='Corrected Signal',
+        ax2.bar(bin_centers, sig_hist, width=(bin_edges[1] - bin_edges[0]), label='Corrected Signal',
                 alpha=0.5, align='center', color='blue')
-        weights = np.where(corrected_sig_hist > 0, corrected_sig_hist, 0)
-        p0 = [np.max(corrected_sig_hist), np.average(bin_centers, weights=weights), 20]
-        popt, pcov = cf(gaussian, bin_centers, corrected_sig_hist, p0=p0)
+        weights = np.where(sig_hist > 0, sig_hist, 0)
+        p0 = [np.max(sig_hist), np.average(bin_centers, weights=weights), 20]
+        popt, pcov = cf(gaussian, bin_centers, sig_hist, p0=p0)
         x_plot = np.linspace(min_edge, max_edge, 1000)
         ax2.plot(x_plot, gaussian(x_plot, *p0), label='Guess', color='Gray')
         ax2.plot(x_plot, gaussian(x_plot, *popt), label='Fit', color='red')
         ax2.set_xlabel('Signal Amplitude (mV)')
         ax2.set_ylabel('Counts')
-        ax2.set_title(f'Corrected Spectrum Fit: {run_dir}')
+        ax2.set_title(f'Signal Spectrum Fit: {run_dir}')
         ax2.grid()
         ax2.legend()
         fig2.tight_layout()
@@ -217,7 +220,7 @@ def process_waveform(waveform_file, run_dir, amplitude_out_file, channels=None, 
         waveform_transpose = waveform_data.T
         waveform_channels = waveform_transpose[1:]
         for chan_i in channels:
-            amplitude = analyze_waveform(waveform_channels[chan_i], plot=True)
+            amplitude = analyze_waveform(waveform_channels[chan_i], plot=False)
             if np.isinf(amplitude):
                 print(f'Inf amplitude in {waveform_file}')
             channel_amplitudes.append(amplitude)
