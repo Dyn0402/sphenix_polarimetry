@@ -12,17 +12,22 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
+from matplotlib.backends.backend_pdf import PdfPages
 import seaborn as sns
 from scipy.optimize import curve_fit as cf
+import pylandau
 from multiprocessing import Pool
 import tqdm
 import istarmap  # This is a custom module that adds starmap to multiprocessing.pool
+
+from Measure import Measure
 
 
 def main():
     side = 'North'
     base_path = f'C:/Users/Dylan/Research/smd_calibration/march6_{side}SMD/'
     fig_save_dir = 'C:/Users/Dylan/Research/smd_calibration/plots/'
+    pdf_save_path = f'{fig_save_dir}{side}_smd_calibration.pdf'
     south_let = 's-' if side == 'South' else ''
     # base_path = '/local/home/dn277127/Documents/smd_calibration/march6_SouthSMD/'
     # fig_save_dir = '/local/home/dn277127/Documents/smd_calibration/plots/'
@@ -36,21 +41,29 @@ def main():
     reprocess = True
     threads = 15
     # process_data(base_path, run_dirs, channels, reprocess, threads, fig_save_dir)
-
+    if pdf_save_path is not None:
+        pdf = PdfPages(pdf_save_path)
+    else:
+        pdf = None
     smd_channels, gaus_centers = [], []
     for i in range(1, 16):
         bkg_dir = f'20240306-{south_let}bg-ch{i}'
+        if os.path.exists(f'{base_path}{bkg_dir}new'):
+            bkg_dir = f'{bkg_dir}new'
         sig_dir = f'20240306-{south_let}ch{i}'
+        if os.path.exists(f'{base_path}{sig_dir}new'):
+            sig_dir = f'{sig_dir}new'
         run_dirs = [bkg_dir] + [sig_dir]
-        process_data(base_path, run_dirs, channels, reprocess, threads, fig_save_dir)
-        # gaus_center = data_analaysis(base_path, sig_dir, bkg_dir, channels, fig_save_dir)[0]
-        # smd_channels.append(i)
-        # gaus_centers.append(gaus_center)
+        # process_data(base_path, run_dirs, channels, reprocess, threads, fig_save_dir)
+        gaus_center = data_analaysis(base_path, sig_dir, bkg_dir, channels, fig_save_dir, pdf)[0]
+        smd_channels.append(i)
+        gaus_centers.append(gaus_center)
         # analyze_pulse_shapes(base_path, run_dirs, channels, fig_save_dir)
-    # plot_peaks(smd_channels, gaus_centers, fig_save_dir)
+    plot_peaks(smd_channels, gaus_centers, fig_save_dir)
     # convert_to_csv(base_path, run_dirs)
     # analyze_baselines(base_path, run_dirs, channels)
     # analyze_pulse_shapes(base_path, run_dirs, channels)
+    pdf.close()
     plt.show()
     print('donzo')
 
@@ -148,7 +161,7 @@ def process_run(run_dir, channels=None, amplitude_out_file='amplitudes.txt', rep
     plot_amplitude_distribution(channel_amplitudes, channels, title, False, fig_save_dir)
 
 
-def data_analaysis(base_path, run_dir, bkg_dir, channels=None, fig_save_dir=None):
+def data_analaysis(base_path, run_dir, bkg_dir, channels=None, fig_save_dir=None, pdf=None):
     """
 
     :param base_path:
@@ -156,8 +169,10 @@ def data_analaysis(base_path, run_dir, bkg_dir, channels=None, fig_save_dir=None
     :param bkg_dir:
     :param channels:
     :param fig_save_dir:
+    :param pdf:
     :return:
     """
+    max_amplitude = 110
     amplitude_out_file = 'amplitudes.txt'
     if channels is None:
         channels = [0, 1, 2, 3]
@@ -166,7 +181,9 @@ def data_analaysis(base_path, run_dir, bkg_dir, channels=None, fig_save_dir=None
     gaus_centers = {}
     for chan_i in channels:
         sig_amps = -np.array(channel_amplitudes[chan_i])
+        sig_amps = sig_amps[sig_amps <= max_amplitude]
         bkg_amps = -np.array(bkg_amplitudes[chan_i])
+        bkg_amps = bkg_amps[bkg_amps <= max_amplitude]
         min_edge = min(min(sig_amps), min(bkg_amps))
         max_edge = max(max(sig_amps), max(bkg_amps))
         bin_edges = np.linspace(min_edge, max_edge, 20)
@@ -188,26 +205,65 @@ def data_analaysis(base_path, run_dir, bkg_dir, channels=None, fig_save_dir=None
         fig.tight_layout()
 
         fig2, ax2 = plt.subplots(figsize=(6.66, 5.2), dpi=144)
-        ax2.bar(bin_centers, sig_hist, width=(bin_edges[1] - bin_edges[0]), label='Corrected Signal',
+        ax2.bar(bin_centers, sig_hist, width=(bin_edges[1] - bin_edges[0]), label='Cs-137 Spectrum',
                 alpha=0.5, align='center', color='blue')
+
+        def langau_plus_bkg_spectrum(x, mu, eta, sig, a, a_landau, bkg_frac):
+            x_bkg = find_nearest_float(bin_centers, x)
+            bkg_hists = np.array([bkg_hist[x_i] for x_i in x_bkg])
+            return pylandau.langau(x, mu, eta, sig, a, a_landau) + bkg_frac * bkg_hists
+            # return pylandau.langau(x, mu, eta, sig, a, a_landau)
+
         weights = np.where(sig_hist > 0, sig_hist, 0)
-        p0 = [np.max(sig_hist), np.average(bin_centers, weights=weights), 20]
-        popt, pcov = cf(gaussian, bin_centers, sig_hist, p0=p0)
+        # func = gaussian
+        # mean_par_num = 1
+        # p0 = [np.max(sig_hist), np.average(bin_centers, weights=weights), 20]
+        mean = np.average(bin_centers, weights=weights)
+        lower_fit_bound = mean * 0.8
+        fit_sig_amps = sig_amps[sig_amps > lower_fit_bound]
+        fit_sig_hist, fit_sig_bin_edges = np.histogram(fit_sig_amps, bins=bin_edges)
+        fit_bin_centers = (fit_sig_bin_edges[:-1] + fit_sig_bin_edges[1:]) / 2
+        fit_sig_errs = np.where(fit_sig_hist == 0, 1, np.sqrt(fit_sig_hist))
+        # func = pylandau.landau
+        # mean_par_num = 0
+        # func_bounds = ([0, 1, 0], [100, 10000, np.max(fit_sig_hist) * 10])
+        # p0 = [mean, 2, np.max(fit_sig_hist)]
+        # func = pylandau.langau
+        # mean_par_num = 0
+        # func_bounds = ([0, 1, 0, 0, 0], [100, 10000, 100, np.max(fit_sig_hist) * 10, 100])
+        # p0 = [mean, 2, 5, np.max(fit_sig_hist), 1]
+        func = langau_plus_bkg_spectrum
+        mean_par_num = 0
+        func_bounds = ([0, 1, 0, 0, 0, 0], [100, 10000, 100, np.max(fit_sig_hist) * 10, 100, 0.5])
+        p_names = ['mu', 'eta', 'sig', 'a', 'a_landau', 'bkg_frac']
+        p0 = [mean, 2, 5, np.max(fit_sig_hist), 1, 0.02]
+        popt, pcov = cf(func, fit_bin_centers, fit_sig_hist, sigma=fit_sig_errs, p0=p0, bounds=func_bounds,
+                        absolute_sigma=True)
         x_plot = np.linspace(min_edge, max_edge, 1000)
-        ax2.plot(x_plot, gaussian(x_plot, *p0), label='Guess', color='Gray')
-        ax2.plot(x_plot, gaussian(x_plot, *popt), label='Fit', color='red')
+        ax2.plot(x_plot, func(x_plot, *p0), label='Guess', color='Gray')
+        ax2.plot(bin_centers, popt[-1] * bkg_hist, label='Bkg Contribution', color='green', alpha=0.5)
+        ax2.plot(x_plot, func(x_plot, *popt), label='Fit', color='red')
+        ax2.axvline(lower_fit_bound, ls='--', zorder=0, color='purple', label='Fit Lower Bound')
+        fit_parameter_mesures = [Measure(popt[i], np.sqrt(pcov[i][i])) for i in range(len(popt))]
+        fit_parameters_string = '\n'.join([f'{p_names[i]}: {fit_parameter_mesures[i]}' for i in range(len(popt))])
+        ax2.annotate(fit_parameters_string, (0.02, 0.9), xycoords='axes fraction', ha='left', va='top',
+                     bbox=dict(facecolor='wheat', alpha=0.5))
         ax2.set_xlabel('Signal Amplitude (mV)')
         ax2.set_ylabel('Counts')
         ax2.set_title(f'Signal Spectrum Fit: {run_dir}')
         ax2.grid()
-        ax2.legend()
+        ax2.legend(loc='upper right')
         fig2.tight_layout()
 
         if fig_save_dir is not None:
             fig.savefig(f'{fig_save_dir}{run_dir}_spectrum.png')
             fig2.savefig(f'{fig_save_dir}{run_dir}_spectrum_fit.png')
 
-        gaus_centers.update({chan_i: popt[1]})
+        if pdf is not None:
+            pdf.savefig(fig2)
+
+        perr = np.sqrt(np.diag(pcov))
+        gaus_centers.update({chan_i: Measure(popt[mean_par_num], perr[mean_par_num])})
 
     return gaus_centers
 
@@ -411,26 +467,31 @@ def plot_amp_sums(channel_amplitudes, channel_sums, channels, title, fig_save_di
         fig.savefig(f'{fig_save_dir}{title}_amp_sum.png')
 
 
-def plot_peaks(smd_channels, gaus_centers, fig_save_dir):
+def plot_peaks(smd_channels, peak_centers, fig_save_dir):
     fig, ax = plt.subplots(figsize=(6.66, 5.2), dpi=144)
-    ax.scatter(smd_channels, gaus_centers)
+    peak_center_vals, peak_cener_errs = [peak.val for peak in peak_centers], [peak.err for peak in peak_centers]
+
+    ax.errorbar(smd_channels, peak_center_vals, yerr=peak_cener_errs, fmt='o', label='Gaussian Center', color='blue',
+                ls='none')
     ax.set_xlabel('SMD Channel')
     ax.set_ylabel('Gaussian Center (mV)')
     ax.set_title('Gaussian Center vs SMD Channel')
     ax.axhline(0, color='black', linestyle='-')
     ax.axhline(100, color='black', linestyle='-')
-    ax.axhline(np.mean(gaus_centers), color='red', alpha=0.3, linestyle='-', label='Mean')
+    ax.axhline(np.mean(peak_center_vals), color='red', alpha=0.3, linestyle='-', label='Mean')
     ax.legend(loc='upper left')
     fig.tight_layout()
     fig.savefig(f'{fig_save_dir}gaus_center_vs_smd_chan.png')
 
 
+def find_nearest_float(float_array, input_float):
+    idx = np.abs(np.subtract.outer(float_array, input_float)).argmin(axis=0)
+    # nearest_floats = float_array[idx]
+    return idx
+
+
 def gaussian(x, a, mu, sig):
     return a * np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.)))
-
-
-# def landau(x, a, mu, sig):
-#     return a * np.exp(-(x - mu) / sig) * (1 + (x - mu) / sig)
 
 
 if __name__ == '__main__':
