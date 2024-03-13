@@ -59,7 +59,7 @@ def main():
         smd_channels.append(i)
         gaus_centers.append(gaus_center)
         # analyze_pulse_shapes(base_path, run_dirs, channels, fig_save_dir)
-    plot_peaks(smd_channels, gaus_centers, fig_save_dir)
+    plot_peaks(smd_channels, gaus_centers, fig_save_dir, side)
     # convert_to_csv(base_path, run_dirs)
     # analyze_baselines(base_path, run_dirs, channels)
     # analyze_pulse_shapes(base_path, run_dirs, channels)
@@ -224,24 +224,26 @@ def data_analaysis(base_path, run_dir, bkg_dir, channels=None, fig_save_dir=None
         fit_sig_hist, fit_sig_bin_edges = np.histogram(fit_sig_amps, bins=bin_edges)
         fit_bin_centers = (fit_sig_bin_edges[:-1] + fit_sig_bin_edges[1:]) / 2
         fit_sig_errs = np.where(fit_sig_hist == 0, 1, np.sqrt(fit_sig_hist))
-        # func = pylandau.landau
-        # mean_par_num = 0
-        # func_bounds = ([0, 1, 0], [100, 10000, np.max(fit_sig_hist) * 10])
-        # p0 = [mean, 2, np.max(fit_sig_hist)]
+        func = pylandau.landau
+        mean_par_num = 0
+        func_bounds = ([0, 1, 0], [100, 10000, np.max(fit_sig_hist) * 10])
+        p0 = [mean, 7, np.max(fit_sig_hist)]
+        p_names = ['mu', 'eta', 'a']
         # func = pylandau.langau
         # mean_par_num = 0
         # func_bounds = ([0, 1, 0, 0, 0], [100, 10000, 100, np.max(fit_sig_hist) * 10, 100])
         # p0 = [mean, 2, 5, np.max(fit_sig_hist), 1]
-        func = langau_plus_bkg_spectrum
-        mean_par_num = 0
-        func_bounds = ([0, 1, 0, 0, 0, 0], [100, 10000, 100, np.max(fit_sig_hist) * 10, 100, 0.5])
-        p_names = ['mu', 'eta', 'sig', 'a', 'a_landau', 'bkg_frac']
-        p0 = [mean, 2, 5, np.max(fit_sig_hist), 1, 0.02]
+        # p_names = ['mu', 'eta', 'sig', 'a', 'a_landau']
+        # func = langau_plus_bkg_spectrum
+        # mean_par_num = 0
+        # func_bounds = ([0, 1, 0, 0, 0, 0], [100, 10000, 100, np.max(fit_sig_hist) * 10, 100, 0.5])
+        # p_names = ['mu', 'eta', 'sig', 'a', 'a_landau', 'bkg_frac']
+        # p0 = [mean, 2, 5, np.max(fit_sig_hist), 1, 0.02]
         popt, pcov = cf(func, fit_bin_centers, fit_sig_hist, sigma=fit_sig_errs, p0=p0, bounds=func_bounds,
                         absolute_sigma=True)
         x_plot = np.linspace(min_edge, max_edge, 1000)
         ax2.plot(x_plot, func(x_plot, *p0), label='Guess', color='Gray')
-        ax2.plot(bin_centers, popt[-1] * bkg_hist, label='Bkg Contribution', color='green', alpha=0.5)
+        # ax2.plot(bin_centers, popt[-1] * bkg_hist, label='Bkg Contribution', color='green', alpha=0.5)
         ax2.plot(x_plot, func(x_plot, *popt), label='Fit', color='red')
         ax2.axvline(lower_fit_bound, ls='--', zorder=0, color='purple', label='Fit Lower Bound')
         fit_parameter_mesures = [Measure(popt[i], np.sqrt(pcov[i][i])) for i in range(len(popt))]
@@ -467,21 +469,25 @@ def plot_amp_sums(channel_amplitudes, channel_sums, channels, title, fig_save_di
         fig.savefig(f'{fig_save_dir}{title}_amp_sum.png')
 
 
-def plot_peaks(smd_channels, peak_centers, fig_save_dir):
+def plot_peaks(smd_channels, peak_centers, fig_save_dir, side='South'):
     fig, ax = plt.subplots(figsize=(6.66, 5.2), dpi=144)
     peak_center_vals, peak_cener_errs = [peak.val for peak in peak_centers], [peak.err for peak in peak_centers]
 
-    ax.errorbar(smd_channels, peak_center_vals, yerr=peak_cener_errs, fmt='o', label='Gaussian Center', color='blue',
+    print(f'SMD Channels: {smd_channels}')
+    print(f'Peak Centers: {peak_center_vals}')
+    print(f'Peak Center Errors: {peak_cener_errs}')
+
+    ax.errorbar(smd_channels, peak_center_vals, yerr=peak_cener_errs, fmt='o', label='Peak Center', color='blue',
                 ls='none')
     ax.set_xlabel('SMD Channel')
-    ax.set_ylabel('Gaussian Center (mV)')
-    ax.set_title('Gaussian Center vs SMD Channel')
+    ax.set_ylabel('Peak Center (mV)')
+    ax.set_title(f'{side} Side Peak Center vs SMD Channel')
     ax.axhline(0, color='black', linestyle='-')
     ax.axhline(100, color='black', linestyle='-')
     ax.axhline(np.mean(peak_center_vals), color='red', alpha=0.3, linestyle='-', label='Mean')
     ax.legend(loc='upper left')
     fig.tight_layout()
-    fig.savefig(f'{fig_save_dir}gaus_center_vs_smd_chan.png')
+    fig.savefig(f'{fig_save_dir}{side.lower()}_gaus_center_vs_smd_chan.png')
 
 
 def find_nearest_float(float_array, input_float):
