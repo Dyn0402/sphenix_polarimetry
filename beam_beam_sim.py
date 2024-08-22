@@ -144,11 +144,12 @@ def animate_bunch_collision():
 
     # Set initial positions, velocities, and widths for the two bunches
     # bunch1.set_r(0., 0., -10.e6)  # um Initial position of bunch 1
-    bunch1.set_r(0., 1000., -6.e6)  # um Initial position of bunch 1
+    bunch1.set_r(0., -500., -6.e6)  # um Initial position of bunch 1
     bunch1.set_beta(0., 0., 1.)  # Dimensionless velocity of bunch 1 moving in +z direction
     # bunch1.set_sigma(150., 150., 4 * bunch1.c)  # um Width of bunch 1 in x, y, z
     bunch1.set_sigma(150., 150., 1.3e6)  # um Width of bunch 1 in x, y, z
     # bunch1.set_angle(-1.5e-3 / 2)  # Rotate bunch 1 in the y-z plane
+    # bunch1.set_angle(-2e-4 / 2)  # Rotate bunch 1 in the y-z plane
     bunch1.beta_star = beta_star
 
     # bunch2.set_r(0., 0., 10.e6)  # um Initial position of bunch 2
@@ -157,7 +158,7 @@ def animate_bunch_collision():
     # bunch2.set_sigma(150., 150., 4 * bunch1.c)  # um Width of bunch 2 in x, y, z
     bunch2.set_sigma(150., 150., 1.3e6)  # um Width of bunch 2 in x, y, z
     # bunch2.set_angle(1.5e-3 / 2)  # Rotate bunch 2 in the y-z plane
-    bunch2.set_angle(2.e-4 / 2)  # Rotate bunch 2 in the y-z plane
+    # bunch2.set_angle(1.e-4 / 2)  # Rotate bunch 2 in the y-z plane
     bunch2.beta_star = beta_star
 
     n_propagation_points = 50
@@ -331,7 +332,7 @@ def animate_bunch_collision():
     anim = FuncAnimation(fig, animate_update, frames=int(n_propagation_points * 1.5),
                          fargs=(im_xz, im_yz, im_sum_xz, im_sum_yz, im_xzs, im_yzs, im_sum_xzs, im_sum_yzs))
     anim.save(animation_save_name, writer='pillow', fps=5)
-    set_gif_no_loop(animation_save_name, animation_save_name)
+    # set_gif_no_loop(animation_save_name, animation_save_name)
 
     plt.show()
 
