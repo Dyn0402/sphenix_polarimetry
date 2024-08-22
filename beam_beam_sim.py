@@ -20,8 +20,8 @@ from time import sleep
 
 def main():
     # animate_bunch_density_propagation()
-    # animate_bunch_collision()
-    simulate_vernier_scan()
+    animate_bunch_collision()
+    # simulate_vernier_scan()
     print('donzo')
 
 
@@ -144,11 +144,11 @@ def animate_bunch_collision():
 
     # Set initial positions, velocities, and widths for the two bunches
     # bunch1.set_r(0., 0., -10.e6)  # um Initial position of bunch 1
-    bunch1.set_r(500., 0., -6.e6)  # um Initial position of bunch 1
+    bunch1.set_r(0., 1000., -6.e6)  # um Initial position of bunch 1
     bunch1.set_beta(0., 0., 1.)  # Dimensionless velocity of bunch 1 moving in +z direction
     # bunch1.set_sigma(150., 150., 4 * bunch1.c)  # um Width of bunch 1 in x, y, z
     bunch1.set_sigma(150., 150., 1.3e6)  # um Width of bunch 1 in x, y, z
-    bunch1.set_angle(-1.5e-3 / 2)  # Rotate bunch 1 in the y-z plane
+    # bunch1.set_angle(-1.5e-3 / 2)  # Rotate bunch 1 in the y-z plane
     bunch1.beta_star = beta_star
 
     # bunch2.set_r(0., 0., 10.e6)  # um Initial position of bunch 2
@@ -156,13 +156,16 @@ def animate_bunch_collision():
     bunch2.set_beta(0., 0., -1.)  # Dimensionless velocity of bunch 2 moving in -z direction
     # bunch2.set_sigma(150., 150., 4 * bunch1.c)  # um Width of bunch 2 in x, y, z
     bunch2.set_sigma(150., 150., 1.3e6)  # um Width of bunch 2 in x, y, z
-    bunch2.set_angle(1.5e-3 / 2)  # Rotate bunch 2 in the y-z plane
+    # bunch2.set_angle(1.5e-3 / 2)  # Rotate bunch 2 in the y-z plane
+    bunch2.set_angle(2.e-4 / 2)  # Rotate bunch 2 in the y-z plane
     bunch2.beta_star = beta_star
 
     n_propagation_points = 50
     n_density_points = 101
     xy_lim_sigma = 10
     z_lim_sigma = 7
+
+    plot_z_gaus_fit = False
 
     animation_save_name = 'test.gif'
 
@@ -308,14 +311,16 @@ def animate_bunch_collision():
     print(f'Initial guess: {p0}')
     popt, pcov = cf(gaus_1d, z, integrated_density_product_z, p0=p0)
     perr = np.sqrt(np.diag(pcov))
+    plt.axhline(0, color='black', alpha=0.5)
     plt.plot(z_cm, integrated_density_product_z)
-    z_plot = np.linspace(z.min(), z.max(), 1000)
-    plt.plot(z_plot / 1e4, gaus_1d(z_plot, *p0), color='gray', alpha=0.3, label='Guess')
-    plt.plot(z_plot / 1e4, gaus_1d(z_plot, *popt), 'r--', label='Fit')
+    if plot_z_gaus_fit:
+        z_plot = np.linspace(z.min(), z.max(), 1000)
+        plt.plot(z_plot / 1e4, gaus_1d(z_plot, *p0), color='gray', alpha=0.3, label='Guess')
+        plt.plot(z_plot / 1e4, gaus_1d(z_plot, *popt), 'r--', label='Fit')
+        plt.legend()
     fit_str = f'Amp = {popt[0]:.2e}±{perr[0]:.2e} cm \nSigma = {popt[1] / 1e4:.2f}±{perr[1] / 1e4:.2f} cm'
     sum_str = f'Sum = {np.sum(integrated_density_product_z):.2e}'
     plt.annotate(f'{fit_str}\n{sum_str}', (0.05, 0.85), xycoords='axes fraction')
-    plt.legend()
     plt.xlabel('z (cm)')
     plt.ylabel('Integrated Density Product')
     plt.title('Integrated Density Product vs z')
