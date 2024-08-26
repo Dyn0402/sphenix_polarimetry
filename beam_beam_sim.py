@@ -20,8 +20,8 @@ from time import sleep
 
 def main():
     # animate_bunch_density_propagation()
-    animate_bunch_collision()
-    # simulate_vernier_scan()
+    # animate_bunch_collision()
+    simulate_vernier_scan()
     print('donzo')
 
 
@@ -33,7 +33,7 @@ def simulate_vernier_scan():
     # beta_star = 9e11  # cm
     bunch_lengths = [1.3 * 1e6, 1.17 * 1e6]  # m to microns
     # bunch_length = 1.2 * 1e6  # m to microns
-    bunch_width = 150.  # microns Transverse Gaussian bunch width
+    bunch_width = 135.  # microns Transverse Gaussian bunch width
     # bunch_width = 200.  # microns Transverse Gaussian bunch width
     z_initial = 6.e6  # microns Starting z position for center of bunches
     # crossing_angle = 1.5e-3 / 2  # radians
@@ -100,7 +100,7 @@ def simulate_vernier_scan():
 
             prob_density_product_sum.append(prob_density_product_sum_i / n_propagation_points)
 
-        p0 = [max(prob_density_product_sum), (max(x_offsets) - min(x_offsets)) / 2, 0.]
+        p0 = [max(prob_density_product_sum), 150, 0.]
         popt, pcov = cf(vernier_scan_fit, x_offsets, prob_density_product_sum, p0=p0)
         popt[1] = abs(popt[1])  # Sigma is squared, so could be negative
         beta_star_amps.append(popt[0])
@@ -110,6 +110,7 @@ def simulate_vernier_scan():
         ax.axhline(0, color='black', alpha=0.5)
         ax.scatter(x_offsets, prob_density_product_sum, marker='o', color='b', label='Data', zorder=10)
         x_fit = np.linspace(x_offsets.min(), x_offsets.max(), 1000)
+        ax.plot(x_fit, vernier_scan_fit(x_fit, *p0), 'gray', alpha=0.5, label='Guess')
         ax.plot(x_fit, vernier_scan_fit(x_fit, *popt), 'r-', label='Fit')
         fit_str = f'Amp = {popt[0]:.1e}±{perr[0]:.1e} \nSigma = {popt[1]:.1f}±{perr[1]:.1f} μm \nMean = {popt[2]:.1f}±{perr[2]:.1f} μm'
         ax.annotate(f'{fit_str}', (0.02, 0.82), xycoords='axes fraction',
@@ -516,6 +517,106 @@ class BunchDensity:
         """
         self.r += self.beta * self.c * self.dt
         self.t += self.dt
+
+
+class BunchCollider:
+    def __init__(self):
+        self.bunch1 = BunchDensity()
+        self.bunch2 = BunchDensity()
+
+        self.bunch1.set_beta(0., 0., +1.)
+        self.bunch2.set_beta(0., 0., -1.)
+
+        self.bunch1.set_sigma(150., 150., 1.1e6)
+        self.bunch2.set_sigma(150., 150., 1.1e6)  # microns
+
+        self.bunch1.beta_star = 85  # cm
+        self.bunch2.beta_star = 85  # cm
+
+        self.bunch1_r_original = np.array([0., 0., -6.e6])
+        self.bunch2_r_original = np.array([0., 0., +6.e6])
+        self.bunch1.set_r(*self.bunch1_r_original)
+        self.bunch2.set_r(*self.bunch2_r_original)
+
+        self.x_lim_sigma = 10
+        self.y_lim_sigma = 10
+        self.z_lim_sigma = 7
+
+        self.n_points_x = 101
+        self.n_points_y = 101
+        self.n_points_z = 101
+        self.n_points_t = 50
+
+        self.x, self.y, self.z = None, None, None
+        self.average_density_product_xyz = None
+
+    def set_bunch_sigmas(self, sigma1, sigma2):
+        self.bunch1.set_sigma(*sigma1)
+        self.bunch2.set_sigma(*sigma2)
+
+    def set_bunch_betas(self, beta1, beta2):
+        self.bunch1.set_beta(*beta1)
+        self.bunch2.set_beta(*beta2)
+
+    def set_bunch_rs(self, r1, r2):
+        self.bunch1_r_original = r1
+        self.bunch2_r_original = r2
+        self.bunch1.set_r(*self.bunch1_r_original)
+        self.bunch2.set_r(*self.bunch2_r_original)
+
+    def set_bunch_beta_stars(self, beta_star1, beta_star2):
+        self.bunch1.beta_star = beta_star1
+        self.bunch2.beta_star = beta_star2
+
+    def set_bunch_crossing(self, crossing_angle1, crossing_angle2):
+        self.bunch1.set_angle(crossing_angle1)
+        self.bunch2.set_angle(crossing_angle2)
+
+    def run_sim(self):
+        # Reset
+        self.bunch1.set_r(*self.bunch1_r_original)
+        self.bunch2.set_r(*self.bunch2_r_original)
+        self.average_density_product_xyz = None
+
+        # Set timestep for propagation
+        dt = (self.bunch2.r[2] - self.bunch1.r[2]) / self.bunch1.c / self.n_points_t
+        self.bunch1.dt = self.bunch2.dt = dt  # ns Timestep to propagate both bunches
+
+        # Create a grid of points for the x-z and y-z planes
+        self.x = np.linspace(-self.x_lim_sigma * self.bunch1.sigma[0], self.x_lim_sigma * self.bunch1.sigma[0], self.n_points_x)
+        self.y = np.linspace(-self.y_lim_sigma * self.bunch1.sigma[1], self.y_lim_sigma * self.bunch1.sigma[1], self.n_points_y)
+        self.z = np.linspace(-self.z_lim_sigma * self.bunch1.sigma[2], self.z_lim_sigma * self.bunch1.sigma[2], self.n_points_z)
+
+        x_3d, y_3d, z_3d = np.meshgrid(self.x, self.y, self.z)  # For 3D space
+
+        for i in range(self.n_points_t):
+            density1_xyz = self.bunch1.density(x_3d, y_3d, z_3d)
+            density2_xyz = self.bunch2.density(x_3d, y_3d, z_3d)
+
+            # Calculate the density product
+            density_product_xyz = density1_xyz * density2_xyz
+            if self.average_density_product_xyz is None:
+                self.average_density_product_xyz = density_product_xyz
+            else:
+                self.average_density_product_xyz += density_product_xyz
+
+            self.bunch1.propagate()
+            self.bunch2.propagate()
+        self.average_density_product_xyz /= self.n_points_t
+
+    def get_beam_sigmas(self):
+        return self.bunch1.sigma, self.bunch2.sigma
+
+    def get_z_density_dist(self):
+        return self.z, np.sum(self.average_density_product_xyz, axis=(0, 1))
+
+    def get_param_string(self):
+        param_string = (f'Beta*s = {self.bunch1.beta_star:.1f}, {self.bunch2.beta_star:.1f} cm\n'
+                        f'Beam Widths = {self.bunch1.sigma[0]:.1f},{self.bunch2.sigma[0]:.1f} um\n'
+                        f'Beam Lengths = {self.bunch1.sigma[2] / 1e4:.1f}, {self.bunch2.sigma[2] / 1e4:.1f} cm\n'
+                        f'Crossing Angles = {self.bunch1.angle * 1e3:.1f}, {self.bunch2.angle * 1e3:.1f} mrad\n'
+                        f'Beam Offsets = {np.sqrt(np.sum(self.bunch1.r[:1]**2)):.1f}, {np.sqrt(np.sum(self.bunch2.r[:1]**2)):.1f} um')
+        return param_string
 
 
 if __name__ == '__main__':
