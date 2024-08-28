@@ -14,14 +14,16 @@ from matplotlib.animation import FuncAnimation, PillowWriter
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.optimize import curve_fit as cf
 from PIL import Image, ImageSequence
-
 from time import sleep
+from multiprocessing import Pool
+
+import bunch_density_cpp as bdcpp
 
 
 def main():
     # animate_bunch_density_propagation()
-    # animate_bunch_collision()
-    simulate_vernier_scan()
+    animate_bunch_collision()
+    # simulate_vernier_scan()
     print('donzo')
 
 
@@ -73,10 +75,10 @@ def simulate_vernier_scan():
             bunch2.set_angle(crossing_angle)  # Rotate bunch 2 in the y-z plane
             bunch2.beta_star = beta_star
 
-
             # Set timestep for propagation
             # bunch1.dt = bunch2.dt = 1e-2  # ns Timestep to propagate both bunches
-            bunch1.dt = bunch2.dt = (bunch2.r[2] - bunch1.r[2]) / bunch1.c / n_propagation_points  # ns Timestep to propagate both bunches
+            bunch1.dt = bunch2.dt = (bunch2.r[2] - bunch1.r[
+                2]) / bunch1.c / n_propagation_points  # ns Timestep to propagate both bunches
 
             # Create a grid of points for the x-z and y-z planes
             x = np.linspace(-xy_lim_sigma * bunch1.sigma[0], xy_lim_sigma * bunch1.sigma[0], n_density_points)
@@ -127,7 +129,7 @@ def simulate_vernier_scan():
     # Neglecting hourglass overestimates σ, therefore underestimates lumi. Need to multiply by (on / off)**2, > 1
     beta_star_sigma_ratio = beta_star_sigmas[0] / beta_star_sigmas[1]  # On / Off
 
-    lumi_correction = beta_star_amp_ratio * beta_star_sigma_ratio**2
+    lumi_correction = beta_star_amp_ratio * beta_star_sigma_ratio ** 2
 
     print(f'Ratio of beta star amps: {beta_star_amp_ratio:.2f}')
     print(f'Ratio of beta star sigmas: {beta_star_sigma_ratio:.2f}')
@@ -140,17 +142,16 @@ def animate_bunch_collision():
     # Initialize two bunches
     bunch1 = BunchDensity()
     bunch2 = BunchDensity()
-    emittance = 2.2  # um
     beta_star = 85  # cm
 
     # Set initial positions, velocities, and widths for the two bunches
     # bunch1.set_r(0., 0., -10.e6)  # um Initial position of bunch 1
-    bunch1.set_r(0., -500., -6.e6)  # um Initial position of bunch 1
+    bunch1.set_r(0., 0., -6.e6)  # um Initial position of bunch 1
     bunch1.set_beta(0., 0., 1.)  # Dimensionless velocity of bunch 1 moving in +z direction
     # bunch1.set_sigma(150., 150., 4 * bunch1.c)  # um Width of bunch 1 in x, y, z
     bunch1.set_sigma(150., 150., 1.3e6)  # um Width of bunch 1 in x, y, z
     # bunch1.set_angle(-1.5e-3 / 2)  # Rotate bunch 1 in the y-z plane
-    # bunch1.set_angle(-2e-4 / 2)  # Rotate bunch 1 in the y-z plane
+    bunch1.set_angle(-2e-4 / 2)  # Rotate bunch 1 in the y-z plane
     bunch1.beta_star = beta_star
 
     # bunch2.set_r(0., 0., 10.e6)  # um Initial position of bunch 2
@@ -173,7 +174,8 @@ def animate_bunch_collision():
 
     # Set timestep for propagation
     # bunch1.dt = bunch2.dt = 1e-2  # ns Timestep to propagate both bunches
-    bunch1.dt = bunch2.dt = (bunch2.r[2] - bunch1.r[2]) / bunch1.c / n_propagation_points  # ns Timestep to propagate both bunches
+    bunch1.dt = bunch2.dt = (bunch2.r[2] - bunch1.r[
+        2]) / bunch1.c / n_propagation_points  # ns Timestep to propagate both bunches
     max_bunch1_density = 1. / (2 * np.pi * bunch1.sigma[0] * bunch1.sigma[1] * bunch1.sigma[2])
     max_bunch2_density = 1. / (2 * np.pi * bunch2.sigma[0] * bunch2.sigma[1] * bunch2.sigma[2])
     max_bunch_density_sum = max_bunch1_density + max_bunch2_density
@@ -407,11 +409,11 @@ def animate_bunch_density_propagation():
 
 
 def gaus_1d(x, a, sigma, x0):
-    return a * np.exp(-(x - x0)**2 / (2 * sigma**2))
+    return a * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2))
 
 
 def vernier_scan_fit(x, a, sigma, x0):
-    return a * np.exp(-(x - x0)**2 / (4 * sigma**2))
+    return a * np.exp(-(x - x0) ** 2 / (4 * sigma ** 2))
 
 
 class BunchDensity:
@@ -489,14 +491,26 @@ class BunchDensity:
         :param z: float z position in lab frame
         :return: float Density of bunch at given point
         """
+        return bdcpp.density(x, y, z, self.r[0], self.r[1], self.r[2],
+                             self.sigma[0], self.sigma[1], self.sigma[2],
+                             self.angle, self.beta_star if self.beta_star is not None else 0)
+
+    def density_py(self, x, y, z):
+        """
+        Calculate the density of the bunch at a given point in the lab frame, with broadening along z and rotation.
+        :param x: float x position in lab frame
+        :param y: float y position in lab frame
+        :param z: float z position in lab frame
+        :return: float Density of bunch at given point
+        """
         # Broadening along the z-axis
         z_rel = z - self.r[2]
         if self.beta_star is None:
             sigma_x = self.sigma[0]
             sigma_y = self.sigma[1]
         else:
-            sigma_x = self.sigma[0] * np.sqrt(1 + z**2 / (self.beta_star * 1e4)**2)
-            sigma_y = self.sigma[1] * np.sqrt(1 + z**2 / (self.beta_star * 1e4)**2)
+            sigma_x = self.sigma[0] * np.sqrt(1 + z ** 2 / (self.beta_star * 1e4) ** 2)
+            sigma_y = self.sigma[1] * np.sqrt(1 + z ** 2 / (self.beta_star * 1e4) ** 2)
             # sigma_x = self.sigma[0] * np.sqrt(1 + abs(z) / 1e5)
             # sigma_y = self.sigma[1] * np.sqrt(1 + abs(z) / 1e5)
 
@@ -506,8 +520,9 @@ class BunchDensity:
 
         # Calculate the density using the modified sigma_x, sigma_y, and rotated coordinates
         x_rel = x - self.r[0]
-        density = np.exp(-0.5 * (x_rel**2 / sigma_x**2 + y_rot**2 / sigma_y**2 + z_rot**2 / self.sigma[2]**2))
-        density /= (2 * np.pi)**1.5 * sigma_x * sigma_y * self.sigma[2]  # Normalize the exponential
+        density = np.exp(
+            -0.5 * (x_rel ** 2 / sigma_x ** 2 + y_rot ** 2 / sigma_y ** 2 + z_rot ** 2 / self.sigma[2] ** 2))
+        density /= (2 * np.pi) ** 1.5 * sigma_x * sigma_y * self.sigma[2]  # Normalize the exponential
 
         return density
 
@@ -524,8 +539,10 @@ class BunchCollider:
         self.bunch1 = BunchDensity()
         self.bunch2 = BunchDensity()
 
-        self.bunch1.set_beta(0., 0., +1.)
-        self.bunch2.set_beta(0., 0., -1.)
+        self.bunch1_beta_original = np.array([0., 0., +1.])
+        self.bunch2_beta_original = np.array([0., 0., -1.])
+        self.bunch1.set_beta(*self.bunch1_beta_original)
+        self.bunch2.set_beta(*self.bunch2_beta_original)
 
         self.bunch1.set_sigma(150., 150., 1.1e6)
         self.bunch2.set_sigma(150., 150., 1.1e6)  # microns
@@ -555,8 +572,10 @@ class BunchCollider:
         self.bunch2.set_sigma(*sigma2)
 
     def set_bunch_betas(self, beta1, beta2):
-        self.bunch1.set_beta(*beta1)
-        self.bunch2.set_beta(*beta2)
+        self.bunch1_beta_original = beta1
+        self.bunch2_beta_original = beta2
+        self.bunch1.set_beta(*self.bunch1_beta_original)
+        self.bunch2.set_beta(*self.bunch2_beta_original)
 
     def set_bunch_rs(self, r1, r2):
         self.bunch1_r_original = r1
@@ -576,6 +595,10 @@ class BunchCollider:
         # Reset
         self.bunch1.set_r(*self.bunch1_r_original)
         self.bunch2.set_r(*self.bunch2_r_original)
+        self.bunch1.set_beta(*self.bunch1_beta_original)
+        self.bunch2.set_beta(*self.bunch2_beta_original)
+        self.bunch1.set_angle(self.bunch1.angle)
+        self.bunch2.set_angle(self.bunch2.angle)
         self.average_density_product_xyz = None
 
         # Set timestep for propagation
@@ -583,9 +606,12 @@ class BunchCollider:
         self.bunch1.dt = self.bunch2.dt = dt  # ns Timestep to propagate both bunches
 
         # Create a grid of points for the x-z and y-z planes
-        self.x = np.linspace(-self.x_lim_sigma * self.bunch1.sigma[0], self.x_lim_sigma * self.bunch1.sigma[0], self.n_points_x)
-        self.y = np.linspace(-self.y_lim_sigma * self.bunch1.sigma[1], self.y_lim_sigma * self.bunch1.sigma[1], self.n_points_y)
-        self.z = np.linspace(-self.z_lim_sigma * self.bunch1.sigma[2], self.z_lim_sigma * self.bunch1.sigma[2], self.n_points_z)
+        self.x = np.linspace(-self.x_lim_sigma * self.bunch1.sigma[0], self.x_lim_sigma * self.bunch1.sigma[0],
+                             self.n_points_x)
+        self.y = np.linspace(-self.y_lim_sigma * self.bunch1.sigma[1], self.y_lim_sigma * self.bunch1.sigma[1],
+                             self.n_points_y)
+        self.z = np.linspace(-self.z_lim_sigma * self.bunch1.sigma[2], self.z_lim_sigma * self.bunch1.sigma[2],
+                             self.n_points_z)
 
         x_3d, y_3d, z_3d = np.meshgrid(self.x, self.y, self.z)  # For 3D space
 
@@ -604,6 +630,55 @@ class BunchCollider:
             self.bunch2.propagate()
         self.average_density_product_xyz /= self.n_points_t
 
+    def compute_time_step(self, time_step_index):
+        """
+        Compute the density for a specific time step.
+        :param time_step_index: Index of the time step to compute
+        :return: Density product for the given time step
+        """
+        self.bunch1.propagate()
+        self.bunch2.propagate()
+
+        # Create a grid of points for the x-y-z planes
+        x_3d, y_3d, z_3d = np.meshgrid(self.x, self.y, self.z)
+
+        density1_xyz = self.bunch1.density(x_3d, y_3d, z_3d)
+        density2_xyz = self.bunch2.density(x_3d, y_3d, z_3d)
+
+        # Calculate the density product
+        density_product_xyz = density1_xyz * density2_xyz
+
+        return density_product_xyz
+
+    def run_sim_parallel(self):
+        # Reset
+        self.bunch1.set_r(*self.bunch1_r_original)
+        self.bunch2.set_r(*self.bunch2_r_original)
+        self.bunch1.set_beta(*self.bunch1_beta_original)
+        self.bunch2.set_beta(*self.bunch2_beta_original)
+        self.bunch1.set_angle(self.bunch1.angle)
+        self.bunch2.set_angle(self.bunch2.angle)
+        self.average_density_product_xyz = None
+
+        # Set timestep for propagation
+        dt = (self.bunch2.r[2] - self.bunch1.r[2]) / self.bunch1.c / self.n_points_t
+        self.bunch1.dt = self.bunch2.dt = dt
+
+        # Create a grid of points for the x-z and y-z planes
+        self.x = np.linspace(-self.x_lim_sigma * self.bunch1.sigma[0], self.x_lim_sigma * self.bunch1.sigma[0],
+                             self.n_points_x)
+        self.y = np.linspace(-self.y_lim_sigma * self.bunch1.sigma[1], self.y_lim_sigma * self.bunch1.sigma[1],
+                             self.n_points_y)
+        self.z = np.linspace(-self.z_lim_sigma * self.bunch1.sigma[2], self.z_lim_sigma * self.bunch1.sigma[2],
+                             self.n_points_z)
+
+        # Create a pool of workers to compute each time step in parallel
+        with Pool() as pool:
+            results = pool.map(self.compute_time_step, range(self.n_points_t))
+
+        # Accumulate the results
+        self.average_density_product_xyz = np.sum(results, axis=0) / self.n_points_t
+
     def get_beam_sigmas(self):
         return self.bunch1.sigma, self.bunch2.sigma
 
@@ -611,11 +686,16 @@ class BunchCollider:
         return self.z, np.sum(self.average_density_product_xyz, axis=(0, 1))
 
     def get_param_string(self):
+        print(f'Beam1.r: {self.bunch1.r}')
+        print(f'Beam1_r_original: {self.bunch1_r_original}')
+        print(f'{self.bunch1.r}')
+        print(f'{self.bunch1.r[:2]}')
         param_string = (f'Beta*s = {self.bunch1.beta_star:.1f}, {self.bunch2.beta_star:.1f} cm\n'
                         f'Beam Widths = {self.bunch1.sigma[0]:.1f},{self.bunch2.sigma[0]:.1f} um\n'
                         f'Beam Lengths = {self.bunch1.sigma[2] / 1e4:.1f}, {self.bunch2.sigma[2] / 1e4:.1f} cm\n'
                         f'Crossing Angles = {self.bunch1.angle * 1e3:.1f}, {self.bunch2.angle * 1e3:.1f} mrad\n'
-                        f'Beam Offsets = {np.sqrt(np.sum(self.bunch1.r[:1]**2)):.1f}, {np.sqrt(np.sum(self.bunch2.r[:1]**2)):.1f} um')
+                        f'Beam Offsets = {np.sqrt(np.sum(self.bunch1.r[:2] ** 2)):.1f}, '
+                        f'{np.sqrt(np.sum(self.bunch2.r[:2] ** 2)):.1f} um')
         return param_string
 
 

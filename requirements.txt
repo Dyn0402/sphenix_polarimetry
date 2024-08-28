@@ -1,0 +1,12 @@
+setuptools~=58.0.4
+pybind11~=2.13.5
+numpy~=1.22.4
+matplotlib~=3.4.3
+scipy~=1.7.1
+pillow~=8.4.0
+uproot~=4.2.3
+awkward~=2.6.4
+vector~=0.8.5
+seaborn~=0.11.2
+pylandau~=2.2.1
+tqdm~=4.62.3
