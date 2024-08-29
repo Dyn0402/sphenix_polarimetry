@@ -24,6 +24,7 @@ def main():
     # z_verted_root_path = '/local/home/dn277127/Bureau/vernier_scan/vertex_data/hist_out.root'
     z_verted_root_path = 'C:/Users/Dylan/Desktop/vernier_scan/vertex_data/hist_out.root'
     # fit_head_on(z_verted_root_path)
+    # fit_head_on_manual(z_verted_root_path)
     fit_peripheral(z_verted_root_path)
     # check_head_on_dependences(z_verted_root_path)
     # plot_all_z_vertex_hists(z_verted_root_path)
@@ -73,6 +74,10 @@ def fit_head_on(z_verted_root_path):
     bin_width = hist_0['centers'][1] - hist_0['centers'][0]
 
     collider_sim = BunchCollider()
+    collider_sim.set_bunch_rs(np.array([0., 0., -6.e6]), np.array([0., 0., +6.e6]))
+    collider_sim.set_bunch_beta_stars(85., 85.)
+    collider_sim.set_bunch_sigmas(np.array([135., 135., 130.e4]), np.array([135., 135., 117.e4]))
+    collider_sim.set_bunch_crossing(-0.13e-3, +0.0e-3)
     collider_sim.run_sim()
     zs, z_dist = collider_sim.get_z_density_dist()
     collider_param_str = collider_sim.get_param_string()
@@ -128,6 +133,36 @@ def fit_head_on(z_verted_root_path):
     plt.show()
 
 
+def fit_head_on_manual(z_verted_root_path):
+    z_vertex_hists = get_mbd_z_dists(z_verted_root_path)
+    hist_0 = z_vertex_hists[0]
+
+    bin_width = hist_0['centers'][1] - hist_0['centers'][0]
+
+    collider_sim = BunchCollider()
+    collider_sim.set_bunch_rs(np.array([0., 0., -6.e6]), np.array([0., 0., +6.e6]))
+    collider_sim.set_bunch_beta_stars(85., 85.)
+    collider_sim.set_bunch_sigmas(np.array([135., 135., 130.e4]), np.array([135., 135., 117.e4]))
+    collider_sim.set_bunch_crossing(-0.13e-3, +0.0e-3)
+    collider_sim.run_sim()
+    zs, z_dist = collider_sim.get_z_density_dist()
+    collider_param_str = collider_sim.get_param_string()
+
+    scale = max(hist_0['counts']) / max(z_dist)
+
+    fig, ax = plt.subplots()
+    ax.bar(hist_0['centers'], hist_0['counts'], width=bin_width, label='MBD Vertex')
+    ax.plot(zs / 1e4, z_dist * scale, color='r', label='Simulation')
+    ax.set_title(f'{hist_0["scan_axis"]} Scan Step {hist_0["scan_step"]}')
+    ax.set_xlabel('z Vertex Position (cm)')
+    ax.annotate(f'{collider_param_str}', (0.02, 0.75), xycoords='axes fraction',
+                bbox=dict(facecolor='wheat', alpha=0.5))
+    ax.legend()
+    fig.tight_layout()
+
+    plt.show()
+
+
 def fit_peripheral(z_verted_root_path):
     z_vertex_hists = get_mbd_z_dists(z_verted_root_path, False)
     hist = z_vertex_hists[-1]
@@ -135,11 +170,16 @@ def fit_peripheral(z_verted_root_path):
     bin_width = hist['centers'][1] - hist['centers'][0]
 
     collider_sim = BunchCollider()
-    collider_sim.set_bunch_rs(np.array([0., 1000., -6.e6]), np.array([0., 0., +6.e6]))
+    collider_sim.set_bunch_rs(np.array([0., +750., -6.e6]), np.array([0., 0., +6.e6]))
+    # collider_sim.set_bunch_rs(np.array([0., -1000., -6.e6]), np.array([0., 0., +6.e6]))
     collider_sim.set_bunch_beta_stars(85., 85.)
-    # collider_sim.set_bunch_sigmas(np.array([135., 135., 130.e4]), np.array([135., 135., 117.e4]))
-    collider_sim.set_bunch_sigmas(np.array([150., 150., 130.e4]), np.array([150., 150., 130.e4]))
-    collider_sim.set_bunch_crossing(-1.e-4, 0.0)
+    collider_sim.set_bunch_sigmas(np.array([135., 135., 130.e4]), np.array([135., 135., 117.e4]))
+    # collider_sim.set_bunch_sigmas(np.array([150., 150., 130.e4]), np.array([150., 150., 130.e4]))
+    # collider_sim.set_bunch_crossing(-0.08e-3 / 2, +0.107e-3 / 2)
+    # collider_sim.set_bunch_crossing(-0.07e-3 / 2, +0.114e-3 / 2)
+    # collider_sim.set_bunch_crossing(-0.05e-3, 0)
+    # collider_sim.set_bunch_crossing(-0.028e-3, 0)
+    collider_sim.set_bunch_crossing(-0.13e-3, +0.0e-3)
 
     collider_sim.run_sim()
     zs, z_dist = collider_sim.get_z_density_dist()

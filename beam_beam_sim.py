@@ -22,8 +22,8 @@ import bunch_density_cpp as bdcpp
 
 def main():
     # animate_bunch_density_propagation()
-    animate_bunch_collision()
-    # simulate_vernier_scan()
+    # animate_bunch_collision()
+    simulate_vernier_scan()
     print('donzo')
 
 
@@ -40,7 +40,8 @@ def simulate_vernier_scan():
     z_initial = 6.e6  # microns Starting z position for center of bunches
     # crossing_angle = 1.5e-3 / 2  # radians
     # crossing_angle = 1.5e-4 / 2  # radians
-    crossing_angle = 0.  # radians
+    crossing_angle = 0.08e-3 / 2  # radians
+    crossing_angle = 0.0  # radians
 
     n_propagation_points = 50
     n_density_points = 101
@@ -601,6 +602,21 @@ class BunchCollider:
         self.bunch2.set_angle(self.bunch2.angle)
         self.average_density_product_xyz = None
 
+        print(f'Bunch1.r: {self.bunch1.r}')
+        print(f'Bunch2.r: {self.bunch2.r}')
+        print(f'Bunch1_r_original: {self.bunch1_r_original}')
+        print(f'Bunch2_r_original: {self.bunch2_r_original}')
+        print(f'Bunch1.beta: {self.bunch1.beta}')
+        print(f'Bunch2.beta: {self.bunch2.beta}')
+        print(f'Bunch1_beta_original: {self.bunch1_beta_original}')
+        print(f'Bunch2_beta_original: {self.bunch2_beta_original}')
+        print(f'Bunch1.angle: {self.bunch1.angle}')
+        print(f'Bunch2.angle: {self.bunch2.angle}')
+        print(f'Bunch1.sigma: {self.bunch1.sigma}')
+        print(f'Bunch2.sigma: {self.bunch2.sigma}')
+        print(f'Bunch1.beta_star: {self.bunch1.beta_star}')
+        print(f'Bunch2.beta_star: {self.bunch2.beta_star}')
+
         # Set timestep for propagation
         dt = (self.bunch2.r[2] - self.bunch1.r[2]) / self.bunch1.c / self.n_points_t
         self.bunch1.dt = self.bunch2.dt = dt  # ns Timestep to propagate both bunches
@@ -693,9 +709,9 @@ class BunchCollider:
         param_string = (f'Beta*s = {self.bunch1.beta_star:.1f}, {self.bunch2.beta_star:.1f} cm\n'
                         f'Beam Widths = {self.bunch1.sigma[0]:.1f},{self.bunch2.sigma[0]:.1f} um\n'
                         f'Beam Lengths = {self.bunch1.sigma[2] / 1e4:.1f}, {self.bunch2.sigma[2] / 1e4:.1f} cm\n'
-                        f'Crossing Angles = {self.bunch1.angle * 1e3:.1f}, {self.bunch2.angle * 1e3:.1f} mrad\n'
-                        f'Beam Offsets = {np.sqrt(np.sum(self.bunch1.r[:2] ** 2)):.1f}, '
-                        f'{np.sqrt(np.sum(self.bunch2.r[:2] ** 2)):.1f} um')
+                        f'Crossing Angles = {self.bunch1.angle * 1e3:.2f}, {self.bunch2.angle * 1e3:.2f} mrad\n'
+                        f'Beam Offsets = {np.sqrt(np.sum(self.bunch1_r_original[:2] ** 2)):.0f}, '
+                        f'{np.sqrt(np.sum(self.bunch2_r_original[:2] ** 2)):.0f} um')
         return param_string
 
 
