@@ -17,23 +17,23 @@ import uproot
 import awkward as ak
 import vector
 
-from beam_beam_sim import BunchCollider
+from BunchCollider import BunchCollider
 
 
 def main():
-    # z_verted_root_path = '/local/home/dn277127/Bureau/vernier_scan/vertex_data/hist_out.root'
-    z_verted_root_path = 'C:/Users/Dylan/Desktop/vernier_scan/vertex_data/hist_out.root'
-    # fit_head_on(z_verted_root_path)
-    # fit_head_on_manual(z_verted_root_path)
-    fit_peripheral(z_verted_root_path)
-    # check_head_on_dependences(z_verted_root_path)
-    # plot_all_z_vertex_hists(z_verted_root_path)
+    # z_vertex_root_path = '/local/home/dn277127/Bureau/vernier_scan/vertex_data/hist_out.root'
+    z_vertex_root_path = 'C:/Users/Dylan/Desktop/vernier_scan/vertex_data/hist_out.root'
+    # fit_head_on(z_vertex_root_path)
+    # fit_head_on_manual(z_vertex_root_path)
+    fit_peripheral(z_vertex_root_path)
+    # check_head_on_dependences(z_vertex_root_path)
+    # plot_all_z_vertex_hists(z_vertex_root_path)
 
     print('donzo')
 
 
-def check_head_on_dependences(z_verted_root_path):
-    z_vertex_hists = get_mbd_z_dists(z_verted_root_path)
+def check_head_on_dependences(z_vertex_root_path):
+    z_vertex_hists = get_mbd_z_dists(z_vertex_root_path)
     hist_0 = z_vertex_hists[0]
 
     # collider_sim = BunchCollider()
@@ -67,8 +67,8 @@ def check_head_on_dependences(z_verted_root_path):
     plt.show()
 
 
-def fit_head_on(z_verted_root_path):
-    z_vertex_hists = get_mbd_z_dists(z_verted_root_path)
+def fit_head_on(z_vertex_root_path):
+    z_vertex_hists = get_mbd_z_dists(z_vertex_root_path)
     hist_0 = z_vertex_hists[0]
 
     bin_width = hist_0['centers'][1] - hist_0['centers'][0]
@@ -133,8 +133,8 @@ def fit_head_on(z_verted_root_path):
     plt.show()
 
 
-def fit_head_on_manual(z_verted_root_path):
-    z_vertex_hists = get_mbd_z_dists(z_verted_root_path)
+def fit_head_on_manual(z_vertex_root_path):
+    z_vertex_hists = get_mbd_z_dists(z_vertex_root_path)
     hist_0 = z_vertex_hists[0]
 
     bin_width = hist_0['centers'][1] - hist_0['centers'][0]
@@ -163,8 +163,8 @@ def fit_head_on_manual(z_verted_root_path):
     plt.show()
 
 
-def fit_peripheral(z_verted_root_path):
-    z_vertex_hists = get_mbd_z_dists(z_verted_root_path, False)
+def fit_peripheral(z_vertex_root_path):
+    z_vertex_hists = get_mbd_z_dists(z_vertex_root_path, False)
     hist = z_vertex_hists[-1]
 
     bin_width = hist['centers'][1] - hist['centers'][0]
@@ -221,8 +221,8 @@ def get_mbd_z_dists(z_vertex_dist_root_path, first_dist=True):
     return z_vertex_hists
 
 
-def plot_all_z_vertex_hists(z_verted_root_path):
-    z_vertex_hists = get_mbd_z_dists(z_verted_root_path, False)
+def plot_all_z_vertex_hists(z_vertex_root_path):
+    z_vertex_hists = get_mbd_z_dists(z_vertex_root_path, False)
     for hist in z_vertex_hists:
         fig, ax = plt.subplots()
         bin_width = hist['centers'][1] - hist['centers'][0]
