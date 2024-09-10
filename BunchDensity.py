@@ -29,6 +29,7 @@ class BunchDensity:
         self.angle_x = 0.  # Rotation angle in y-z plane in radians
         self.angle_y = 0.  # Rotation angle in x-z plane in radians
         self.beta_star = None  # cm Beta star value for the bunch
+        self.delay = 0.  # ns Time delay of the bunch
 
         self.initial_z = 0.  # Initial z distance in um
         self.offset_x = 0.  # Offset in x in um
@@ -84,15 +85,25 @@ class BunchDensity:
         self.angle_y = angle_y
         self.reset = True
 
+    def set_delay(self, delay):
+        """
+        Set the time delay of the bunch.
+        :param delay: float Time delay in ns
+        """
+        self.delay = delay
+        self.reset = True
+
     def calculate_r_and_beta(self):
         """
         Calculate the r position and beta based on initial z distance, x, y offsets, and angles.
         The total distance from the origin to the center of the bunch (ignoring offsets) should be the initial z distance.
         After the center is calculated, apply the x and y offsets.
         """
+        # Calculate the delayed z position based on the initial z distance and delay. Positive delay, larger z
+        delayed_z = self.initial_z + np.sign(self.initial_z) * self.delay * self.c
 
         # Calculate the unrotated position vector based on the initial z distance
-        r_rotated = self.initial_z * np.array([np.sin(self.angle_x), np.sin(self.angle_y), 1.], dtype=np.float64)
+        r_rotated = delayed_z * np.array([np.sin(self.angle_x), np.sin(self.angle_y), 1.], dtype=np.float64)
 
         # Apply x and y offsets (only to r, not beta)
         r_final = r_rotated + np.array([self.offset_x, self.offset_y, 0.], dtype=np.float64)
@@ -118,7 +129,7 @@ class BunchDensity:
             self.calculate_r_and_beta()
         return bdcpp.density(x, y, z, self.r[0], self.r[1], self.r[2],
                              self.sigma[0], self.sigma[1], self.sigma[2],
-                             self.angle_y, self.beta_star if self.beta_star is not None else 0)
+                             self.angle_x, self.angle_y, self.beta_star if self.beta_star is not None else 0)
 
     def density_py(self, x, y, z):
         """
@@ -161,8 +172,10 @@ class BunchDensity:
             sigma_x = self.sigma[0]
             sigma_y = self.sigma[1]
         else:
-            sigma_x = self.sigma[0] * np.sqrt(1 + z ** 2 / (self.beta_star * 1e4) ** 2)
-            sigma_y = self.sigma[1] * np.sqrt(1 + z ** 2 / (self.beta_star * 1e4) ** 2)
+            # Calculate distance to IP along the axis of travel, based on z and the angles
+            distance_to_IP = z * np.sqrt(1 + np.tan(self.angle_x) ** 2 + np.tan(self.angle_y) ** 2)
+            sigma_x = self.sigma[0] * np.sqrt(1 + distance_to_IP ** 2 / (self.beta_star * 1e4) ** 2)
+            sigma_y = self.sigma[1] * np.sqrt(1 + distance_to_IP ** 2 / (self.beta_star * 1e4) ** 2)
 
         # Calculate the density using the modified sigma_x, sigma_y, and rotated coordinates
         density = np.exp(

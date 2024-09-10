@@ -13,13 +13,16 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from datetime import datetime
 import pytz
+from babel.dates import time_
+from decorator import append
+from sympy.polys.benchmarks.bench_groebnertools import time_vertex_color_12_vertices_23_edges
 
 
 def main():
-    vernier_scan_date = 'Aug12'
-    # vernier_scan_date = 'Jul11'
-    # cad_measurements_path = 'C:/Users/Dylan/Desktop/vernier_scan/CAD_Measurements/'
-    cad_measurements_path = '/local/home/dn277127/Bureau/vernier_scan/CAD_Measurements/'
+    # vernier_scan_date = 'Aug12'
+    vernier_scan_date = 'Jul11'
+    cad_measurements_path = 'C:/Users/Dylan/Desktop/vernier_scan/CAD_Measurements/'
+    # cad_measurements_path = '/local/home/dn277127/Bureau/vernier_scan/CAD_Measurements/'
     # crossing_angle(cad_measurements_path, vernier_scan_date)
     # bunch_length(cad_measurements_path, vernier_scan_date)
     # beam_offset_and_intensity(cad_measurements_path, vernier_scan_date)
@@ -39,34 +42,29 @@ def combine_cad_measurements(cad_measurements_path, vernier_scan_date):
 
     beam_offset_intensity_x_data = read_beam_offset_and_intensity(beam_offset_intensity_x_path)
     beam_offset_intensity_x_data['orientation'] = 'Horizontal'
+    beam_offset_intensity_x_data = append_relative_and_set_offsets(beam_offset_intensity_x_data)
     beam_offset_intensity_y_data = read_beam_offset_and_intensity(beam_offset_intensity_y_path)
     beam_offset_intensity_y_data['orientation'] = 'Vertical'
+    beam_offset_intensity_y_data = append_relative_and_set_offsets(beam_offset_intensity_y_data)
     boi_data = pd.concat([beam_offset_intensity_x_data, beam_offset_intensity_y_data], axis=0, ignore_index=True)
 
     crossing_angle_data = read_crossing_angle(crossing_angle_path)
     summarized_crossing_angle_data = average_crossing_angles(crossing_angle_data, bunch_length_data['time'])
 
-    print(crossing_angle_data['time'])
+    print(summarized_crossing_angle_data['time'])
     print(bunch_length_data['time'])
-    print(beam_offset_intensity_x_data['time'])
-    print(beam_offset_intensity_y_data['time'])
-    time_boi = pd.concat([beam_offset_intensity_x_data, beam_offset_intensity_y_data], axis=0, ignore_index=True)['time']
-    print(len(time_boi))
-    print(len(bunch_length_data['time']))
-    print(time_boi)
-    print(bunch_length_data['time'])
-    print(time_boi == bunch_length_data['time'])
 
     summarized_crossing_angle_data = summarized_crossing_angle_data.set_index('time')
     bunch_length_data = bunch_length_data.set_index('time')
-    beam_offset_intensity_x_data = beam_offset_intensity_x_data.set_index('time')
-    beam_offset_intensity_y_data = beam_offset_intensity_y_data.set_index('time')
+    boi_data = boi_data.set_index('time')
 
-    combined_data = pd.concat([summarized_crossing_angle_data, bunch_length_data, beam_offset_intensity_x_data,
-                               beam_offset_intensity_y_data], axis=1)
+    combined_data = pd.concat([summarized_crossing_angle_data, bunch_length_data, boi_data], axis=1)
+    combined_data = combined_data.reset_index()
     print(combined_data)
-    #
-    # combined_data.to_csv(f'{cad_measurements_path}VernierScan_{vernier_scan_date}_combined.dat', sep='\t')
+    print(combined_data.columns)
+    print(combined_data.iloc[0])
+
+    combined_data.to_csv(f'{cad_measurements_path}VernierScan_{vernier_scan_date}_combined.dat', sep='\t')
 
 
 def crossing_angle(cad_measurements_path, vernier_scan_date):
@@ -270,7 +268,9 @@ def average_crossing_angles(crossing_angle_data, times):
     """
     # Get time start and end points from times Series using midpoints between points
     time_starts = times - (times - times.shift()) / 2
-    time_ends = times + (times - times.shift(-1)) / 2
+    time_ends = times + (times - times.shift()) / 2
+    time_starts.iloc[0] = times.iloc[0] - (times.iloc[1] - times.iloc[0]) / 2
+    time_ends.iloc[0] = times.iloc[0] + (times.iloc[1] - times.iloc[0]) / 2
 
     # Initialize lists to store averages, standard deviations, mins, and maxes
     avg_bh8, avg_yh8, avg_gh8, std_bh8, std_yh8, std_gh8 = [], [], [], [], [], []
@@ -317,6 +317,40 @@ def convert_bunch_length_to_distance(data):
     c = 299792458  # m/s
     data['blue_bunch_length'] = data['blue_bunch_length'] * c * 1e-9 / (2 * np.sqrt(2 * np.log(2)))
     data['yellow_bunch_length'] = data['yellow_bunch_length'] * c * 1e-9 / (2 * np.sqrt(2 * np.log(2)))
+
+
+def append_relative_and_set_offsets(boi_data):
+    """
+    Append the relative and intended offsets to the beam offset and intensity data DataFrame.
+    The relative offsets are the offsets relative to the first measured offset.
+    The intended offsets are the offsets that are set in the control room. Use the relative offsets and match to the
+    closest set_vals.
+    """
+    set_vals = [0.0, 0.1, 0.25, 0.4, 0.6, 0.9]
+
+    # Create a copy of the DataFrame
+    new_boi_data = boi_data.copy()
+
+    # Calculate the relative offsets
+    new_boi_data['bpm_south_ir_rel'] = new_boi_data['bpm_south_ir'] - new_boi_data['bpm_south_ir'].iloc[0]
+    new_boi_data['bpm_north_ir_rel'] = new_boi_data['bpm_north_ir'] - new_boi_data['bpm_north_ir'].iloc[0]
+
+    # Initialize new columns for the average and set values
+    new_boi_data['offset_avg_val'] = new_boi_data['bpm_south_ir']
+    new_boi_data['offset_set_val'] = new_boi_data['bpm_south_ir']
+
+    # Calculate the average measured offsets and match to the closest set values
+    for i in range(0, len(new_boi_data)):
+        avg_meas_offset = (new_boi_data['bpm_south_ir_rel'].iloc[i] + new_boi_data['bpm_north_ir_rel'].iloc[i]) / 2
+        closest_set_val = min(set_vals, key=lambda x: abs(x - abs(avg_meas_offset)))
+
+        if closest_set_val != 0.0:
+            closest_set_val *= np.sign(avg_meas_offset)
+
+        new_boi_data.at[i, 'offset_avg_val'] = avg_meas_offset
+        new_boi_data.at[i, 'offset_set_val'] = closest_set_val
+
+    return new_boi_data
 
 
 if __name__ == '__main__':

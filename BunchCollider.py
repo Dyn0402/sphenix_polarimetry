@@ -10,6 +10,7 @@ Created as sphenix_polarimetry/BunchCollider.py
 
 import numpy as np
 from multiprocessing import Pool
+from scipy.ndimage import gaussian_filter1d
 
 from BunchDensity import BunchDensity
 
@@ -38,6 +39,8 @@ class BunchCollider:
         self.amplitude = 1.  # arb Scale amplitude of z-distribution by this amount
 
         self.z_bounds = (-265. * 1e4, 265. * 1e4)
+
+        self.gaus_smearing_sigma = None
 
         self.x_lim_sigma = 10
         self.y_lim_sigma = 10
@@ -91,6 +94,13 @@ class BunchCollider:
 
     def set_z_bounds(self, z_bounds):
         self.z_bounds = z_bounds
+
+    def set_gaus_smearing_sigma(self, sigma):
+        self.gaus_smearing_sigma = sigma
+
+    def set_bunch_delays(self, delay1, delay2):
+        self.bunch1.set_delay(delay1)
+        self.bunch2.set_delay(delay2)
 
     def run_sim(self, print_params=False):
         # Reset
@@ -191,17 +201,20 @@ class BunchCollider:
         return self.bunch1.sigma, self.bunch2.sigma
 
     def get_z_density_dist(self):
-        z_vals = self.z - self.z_shift
+        z_vals = (self.z - self.z_shift) / 1e4  # um to cm
         z_dist = self.amplitude * np.sum(self.average_density_product_xyz, axis=(0, 1))
-        return z_vals / 1e4, z_dist
+        if self.gaus_smearing_sigma is not None:
+            z_spacing = z_vals[1] - z_vals[0]
+            z_dist = gaussian_filter1d(z_dist, self.gaus_smearing_sigma / z_spacing)
+        return z_vals, z_dist
 
     def get_param_string(self):
-        param_string = (f'Beta*s = {self.bunch1.beta_star:.1f}, {self.bunch2.beta_star:.1f} cm\n'
-                        f'Beam Widths = {self.bunch1.sigma[0]:.1f}, {self.bunch2.sigma[0]:.1f} um\n'
-                        f'Beam Lengths = {self.bunch1.sigma[2] / 1e4:.1f}, {self.bunch2.sigma[2] / 1e4:.1f} cm\n'
-                        f'Crossing Angles y = {self.bunch1.angle_y * 1e3:.2f}, {self.bunch2.angle_y * 1e3:.2f} mrad\n'
-                        f'Crossing Angles x = {self.bunch1.angle_x * 1e3:.2f}, {self.bunch2.angle_x * 1e3:.2f} mrad\n'
-                        f'Beam Offsets = {np.sqrt(np.sum(self.bunch1_r_original[:2] ** 2)):.0f}, '
+        param_string = (f'Beta*s: {self.bunch1.beta_star:.1f}, {self.bunch2.beta_star:.1f} cm\n'
+                        f'Beam Widths: {self.bunch1.sigma[0]:.1f}, {self.bunch2.sigma[0]:.1f} um\n'
+                        f'Beam Lengths: {self.bunch1.sigma[2] / 1e4:.1f}, {self.bunch2.sigma[2] / 1e4:.1f} cm\n'
+                        f'Crossing Angles y: {self.bunch1.angle_y * 1e3:.2f}, {self.bunch2.angle_y * 1e3:.2f} mrad\n'
+                        f'Crossing Angles x: {self.bunch1.angle_x * 1e3:.2f}, {self.bunch2.angle_x * 1e3:.2f} mrad\n'
+                        f'Beam Offsets: {np.sqrt(np.sum(self.bunch1_r_original[:2] ** 2)):.0f}, '
                         f'{np.sqrt(np.sum(self.bunch2_r_original[:2] ** 2)):.0f} um')
         return param_string
 
