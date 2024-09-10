@@ -34,12 +34,15 @@ class BunchDensity:
         self.offset_x = 0.  # Offset in x in um
         self.offset_y = 0.  # Offset in y in um
 
+        self.reset = True  # If true calculate r and bete before next density calculation, if false use current values
+
     def set_initial_z(self, z):
         """
         Set the initial z distance of the bunch.
         :param z: float Initial z position in lab frame
         """
         self.initial_z = z
+        self.reset = True
 
     def set_offsets(self, x_offset, y_offset):
         """
@@ -49,6 +52,7 @@ class BunchDensity:
         """
         self.offset_x = x_offset
         self.offset_y = y_offset
+        self.reset = True
 
     def set_beta(self, x, y, z):
         """
@@ -58,6 +62,7 @@ class BunchDensity:
         :param z: float z velocity in lab frame
         """
         self.beta = np.array([x, y, z], dtype=np.float64)
+        self.reset = True
 
     def set_sigma(self, x, y, z):
         """
@@ -67,6 +72,7 @@ class BunchDensity:
         :param z: float z width in lab frame
         """
         self.sigma = np.array([x, y, z], dtype=np.float64)
+        self.reset = True
 
     def set_angles(self, angle_x, angle_y):
         """
@@ -76,6 +82,7 @@ class BunchDensity:
         """
         self.angle_x = angle_x
         self.angle_y = angle_y
+        self.reset = True
 
     def calculate_r_and_beta(self):
         """
@@ -96,6 +103,9 @@ class BunchDensity:
         beta_direction = -r_rotated / np.linalg.norm(r_rotated)
         self.beta = beta_direction
 
+        self.t = 0
+        self.reset = False
+
     def density(self, x, y, z):
         """
         Calculate the density of the bunch at a given point in the lab frame, with broadening along z and rotation.
@@ -104,38 +114,11 @@ class BunchDensity:
         :param z: float z position in lab frame
         :return: float Density of bunch at given point
         """
+        if self.reset:
+            self.calculate_r_and_beta()
         return bdcpp.density(x, y, z, self.r[0], self.r[1], self.r[2],
                              self.sigma[0], self.sigma[1], self.sigma[2],
                              self.angle_y, self.beta_star if self.beta_star is not None else 0)
-
-    # def density_py(self, x, y, z):
-    #     """
-    #     Calculate the density of the bunch at a given point in the lab frame, with broadening along z and rotation.
-    #     :param x: float x position in lab frame
-    #     :param y: float y position in lab frame
-    #     :param z: float z position in lab frame
-    #     :return: float Density of bunch at given point
-    #     """
-    #     # Broadening along the z-axis
-    #     z_rel = z - self.r[2]
-    #     if self.beta_star is None:
-    #         sigma_x = self.sigma[0]
-    #         sigma_y = self.sigma[1]
-    #     else:
-    #         sigma_x = self.sigma[0] * np.sqrt(1 + z ** 2 / (self.beta_star * 1e4) ** 2)
-    #         sigma_y = self.sigma[1] * np.sqrt(1 + z ** 2 / (self.beta_star * 1e4) ** 2)
-    #
-    #     # Rotate coordinates in the y-z plane
-    #     y_rot = (y - self.r[1]) * np.cos(self.angle_yz) - z_rel * np.sin(self.angle_yz)
-    #     z_rot = (y - self.r[1]) * np.sin(self.angle_yz) + z_rel * np.cos(self.angle_yz)
-    #
-    #     # Calculate the density using the modified sigma_x, sigma_y, and rotated coordinates
-    #     x_rel = x - self.r[0]
-    #     density = np.exp(
-    #         -0.5 * (x_rel ** 2 / sigma_x ** 2 + y_rot ** 2 / sigma_y ** 2 + z_rot ** 2 / self.sigma[2] ** 2))
-    #     density /= (2 * np.pi) ** 1.5 * sigma_x * sigma_y * self.sigma[2]  # Normalize the exponential
-    #
-    #     return density
 
     def density_py(self, x, y, z):
         """
@@ -146,6 +129,10 @@ class BunchDensity:
         :param z: float z position in lab frame
         :return: float Density of bunch at given point
         """
+        if self.reset:
+            self.calculate_r_and_beta()
+            self.reset = False
+
         # Calculate the relative position vector
         relative_r = np.array([x - self.r[0], y - self.r[1], z - self.r[2]], dtype=np.float64)
 
@@ -193,6 +180,18 @@ class BunchDensity:
         """
         self.r += self.beta * self.c * self.dt
         self.t += self.dt
+
+    def __str__(self):
+        return (f'Bunch Parameters:\n'
+                f'Initial Z: {self.initial_z:.0f} um\n'
+                f'Offsets: {self.offset_x:.4f}, {self.offset_y:.4f} um\n'
+                f'Beta: {self.beta}\n'
+                f'Sigma: {self.sigma}\n'
+                f'Angles: {self.angle_x * 1e3:.4f}, {self.angle_y * 1e3:.4f} mrads\n'
+                f'Position: {self.r}\n'
+                f'Time: {self.t} ns\n'
+                f'Timestep: {self.dt} ns\n'
+                f'Beta Star: {self.beta_star:.1f} cm')
 
 
 # class BunchDensity:

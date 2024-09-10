@@ -32,17 +32,21 @@ class BunchCollider:
 
         self.bunch1_r_original = np.array([0., 0., -6.e6])
         self.bunch2_r_original = np.array([0., 0., +6.e6])
-        self.bunch1.set_r(*self.bunch1_r_original)
-        self.bunch2.set_r(*self.bunch2_r_original)
+        self.set_bunch_rs(self.bunch1_r_original, self.bunch2_r_original)
+
+        self.z_shift = 0.  # microns Distance to shift the center of the collisions along beam axis
+        self.amplitude = 1.  # arb Scale amplitude of z-distribution by this amount
+
+        self.z_bounds = (-265. * 1e4, 265. * 1e4)
 
         self.x_lim_sigma = 10
         self.y_lim_sigma = 10
-        self.z_lim_sigma = 7
+        self.z_lim_sigma = 5
 
-        self.n_points_x = 101
-        self.n_points_y = 101
-        self.n_points_z = 101
-        self.n_points_t = 50
+        self.n_points_x = 61
+        self.n_points_y = 61
+        self.n_points_z = 151
+        self.n_points_t = 60
 
         self.x, self.y, self.z = None, None, None
         self.average_density_product_xyz = None
@@ -60,44 +64,44 @@ class BunchCollider:
     def set_bunch_rs(self, r1, r2):
         self.bunch1_r_original = r1
         self.bunch2_r_original = r2
-        self.bunch1.set_r(*self.bunch1_r_original)
-        self.bunch2.set_r(*self.bunch2_r_original)
+        self.bunch1.set_initial_z(self.bunch1_r_original[2])
+        self.bunch2.set_initial_z(self.bunch2_r_original[2])
+        self.bunch1.set_offsets(*self.bunch1_r_original[:2])
+        self.bunch2.set_offsets(*self.bunch2_r_original[:2])
+
+    def set_bunch_offsets(self, offset1, offset2):
+        self.bunch1_r_original[:2] = offset1
+        self.bunch2_r_original[:2] = offset2
+        self.bunch1.set_offsets(*self.bunch1_r_original[:2])
+        self.bunch2.set_offsets(*self.bunch2_r_original[:2])
 
     def set_bunch_beta_stars(self, beta_star1, beta_star2):
         self.bunch1.beta_star = beta_star1
         self.bunch2.beta_star = beta_star2
 
-    def set_bunch_crossing(self, crossing_angle1, crossing_angle2):
-        self.bunch1.set_angle(crossing_angle1)
-        self.bunch2.set_angle(crossing_angle2)
+    def set_bunch_crossing(self, crossing_angle1_x, crossing_angle1_y, crossing_angle2_x, crossing_angle2_y):
+        self.bunch1.set_angles(crossing_angle1_x, crossing_angle1_y)
+        self.bunch2.set_angles(crossing_angle2_x, crossing_angle2_y)
 
-    def run_sim(self):
+    def set_z_shift(self, z_shift):
+        self.z_shift = z_shift
+
+    def set_amplitude(self, amp):
+        self.amplitude = amp
+
+    def set_z_bounds(self, z_bounds):
+        self.z_bounds = z_bounds
+
+    def run_sim(self, print_params=False):
         # Reset
-        self.bunch1.set_r(*self.bunch1_r_original)
-        self.bunch2.set_r(*self.bunch2_r_original)
+        self.set_bunch_rs(self.bunch1_r_original, self.bunch2_r_original)
         self.bunch1.set_beta(*self.bunch1_beta_original)
         self.bunch2.set_beta(*self.bunch2_beta_original)
-        self.bunch1.set_angle(self.bunch1.angle)
-        self.bunch2.set_angle(self.bunch2.angle)
+        self.bunch1.set_angles(self.bunch1.angle_x, self.bunch1.angle_y)
         self.average_density_product_xyz = None
 
-        print(f'Bunch1.r: {self.bunch1.r}')
-        print(f'Bunch2.r: {self.bunch2.r}')
-        print(f'Bunch1_r_original: {self.bunch1_r_original}')
-        print(f'Bunch2_r_original: {self.bunch2_r_original}')
-        print(f'Bunch1.beta: {self.bunch1.beta}')
-        print(f'Bunch2.beta: {self.bunch2.beta}')
-        print(f'Bunch1_beta_original: {self.bunch1_beta_original}')
-        print(f'Bunch2_beta_original: {self.bunch2_beta_original}')
-        print(f'Bunch1.angle: {self.bunch1.angle}')
-        print(f'Bunch2.angle: {self.bunch2.angle}')
-        print(f'Bunch1.sigma: {self.bunch1.sigma}')
-        print(f'Bunch2.sigma: {self.bunch2.sigma}')
-        print(f'Bunch1.beta_star: {self.bunch1.beta_star}')
-        print(f'Bunch2.beta_star: {self.bunch2.beta_star}')
-
         # Set timestep for propagation
-        dt = (self.bunch2.r[2] - self.bunch1.r[2]) / self.bunch1.c / self.n_points_t
+        dt = (self.bunch2.initial_z - self.bunch1.initial_z) / self.bunch1.c / self.n_points_t
         self.bunch1.dt = self.bunch2.dt = dt  # ns Timestep to propagate both bunches
 
         # Create a grid of points for the x-z and y-z planes
@@ -105,10 +109,19 @@ class BunchCollider:
                              self.n_points_x)
         self.y = np.linspace(-self.y_lim_sigma * self.bunch1.sigma[1], self.y_lim_sigma * self.bunch1.sigma[1],
                              self.n_points_y)
-        self.z = np.linspace(-self.z_lim_sigma * self.bunch1.sigma[2], self.z_lim_sigma * self.bunch1.sigma[2],
-                             self.n_points_z)
+        if self.z_bounds is not None:
+            self.z = np.linspace(self.z_bounds[0], self.z_bounds[1], self.n_points_z)
+        else:
+            min_z = min(self.bunch1_r_original[2], self.bunch2_r_original[2])
+            max_z = max(self.bunch1_r_original[2], self.bunch2_r_original[2])
+            self.z = np.linspace(min_z - self.z_lim_sigma * self.bunch1.sigma[2],
+                                 max_z + self.z_lim_sigma * self.bunch1.sigma[2], self.n_points_z)
 
         x_3d, y_3d, z_3d = np.meshgrid(self.x, self.y, self.z, indexing='ij')  # For 3D space
+        self.bunch1.calculate_r_and_beta()
+        self.bunch2.calculate_r_and_beta()
+        if print_params:
+            print(self)
 
         for i in range(self.n_points_t):
             density1_xyz = self.bunch1.density(x_3d, y_3d, z_3d)
@@ -178,17 +191,26 @@ class BunchCollider:
         return self.bunch1.sigma, self.bunch2.sigma
 
     def get_z_density_dist(self):
-        return self.z, np.sum(self.average_density_product_xyz, axis=(0, 1))
+        z_vals = self.z - self.z_shift
+        z_dist = self.amplitude * np.sum(self.average_density_product_xyz, axis=(0, 1))
+        return z_vals / 1e4, z_dist
 
     def get_param_string(self):
-        print(f'Beam1.r: {self.bunch1.r}')
-        print(f'Beam1_r_original: {self.bunch1_r_original}')
-        print(f'{self.bunch1.r}')
-        print(f'{self.bunch1.r[:2]}')
         param_string = (f'Beta*s = {self.bunch1.beta_star:.1f}, {self.bunch2.beta_star:.1f} cm\n'
-                        f'Beam Widths = {self.bunch1.sigma[0]:.1f},{self.bunch2.sigma[0]:.1f} um\n'
+                        f'Beam Widths = {self.bunch1.sigma[0]:.1f}, {self.bunch2.sigma[0]:.1f} um\n'
                         f'Beam Lengths = {self.bunch1.sigma[2] / 1e4:.1f}, {self.bunch2.sigma[2] / 1e4:.1f} cm\n'
-                        f'Crossing Angles = {self.bunch1.angle * 1e3:.2f}, {self.bunch2.angle * 1e3:.2f} mrad\n'
+                        f'Crossing Angles y = {self.bunch1.angle_y * 1e3:.2f}, {self.bunch2.angle_y * 1e3:.2f} mrad\n'
+                        f'Crossing Angles x = {self.bunch1.angle_x * 1e3:.2f}, {self.bunch2.angle_x * 1e3:.2f} mrad\n'
                         f'Beam Offsets = {np.sqrt(np.sum(self.bunch1_r_original[:2] ** 2)):.0f}, '
                         f'{np.sqrt(np.sum(self.bunch2_r_original[:2] ** 2)):.0f} um')
         return param_string
+
+    def __str__(self):
+        return (f'BunchCollider:\n'
+                f'z_shift: {self.z_shift}, amplitude: {self.amplitude}, x_lim_sigma: {self.x_lim_sigma}, '
+                f'y_lim_sigma: {self.y_lim_sigma}, z_lim_sigma: {self.z_lim_sigma}, n_points_x: {self.n_points_x}, '
+                f'n_points_y: {self.n_points_y}, n_points_z: {self.n_points_z}, n_points_t: {self.n_points_t}, '
+                f'bunch1_r_original: {self.bunch1_r_original}, bunch2_r_original: {self.bunch2_r_original}, '
+                f'bunch1_beta_original: {self.bunch1_beta_original}, bunch2_beta_original: {self.bunch2_beta_original}\n'
+                f'\nbunch1: {self.bunch1}\n'
+                f'\nbunch2: {self.bunch2}\n')

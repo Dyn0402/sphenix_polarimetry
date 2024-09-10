@@ -20,8 +20,8 @@ from BunchDensity import BunchDensity
 
 
 def main():
-    animate_bunch_density_propagation()
-    # animate_bunch_collision()
+    # animate_bunch_density_propagation()
+    animate_bunch_collision()
     # simulate_vernier_scan()
     print('donzo')
 
@@ -145,22 +145,18 @@ def animate_bunch_collision():
     beta_star = 85  # cm
 
     # Set initial positions, velocities, and widths for the two bunches
-    # bunch1.set_r(0., 0., -10.e6)  # um Initial position of bunch 1
-    bunch1.set_r(0., 0., -6.e6)  # um Initial position of bunch 1
+    bunch1.set_initial_z(-600.e4)  # um Initial z position of bunch 1
+    bunch1.set_offsets(0., 0.)  # um Initial x and y offsets of bunch 1
     bunch1.set_beta(0., 0., 1.)  # Dimensionless velocity of bunch 1 moving in +z direction
-    # bunch1.set_sigma(150., 150., 4 * bunch1.c)  # um Width of bunch 1 in x, y, z
     bunch1.set_sigma(150., 150., 1.3e6)  # um Width of bunch 1 in x, y, z
-    # bunch1.set_angle(-1.5e-3 / 2)  # Rotate bunch 1 in the y-z plane
-    bunch1.set_angle(-2e-4 / 2)  # Rotate bunch 1 in the y-z plane
+    bunch1.set_angles(0., -0.075e-3)  # rad Rotate bunch 1 in the x-z and y-z planes
     bunch1.beta_star = beta_star
 
-    # bunch2.set_r(0., 0., 10.e6)  # um Initial position of bunch 2
-    bunch2.set_r(0., 0., 6.e6)  # um Initial position of bunch 2
+    bunch2.set_initial_z(600.e4)  # um Initial z position of bunch 2
+    bunch2.set_offsets(0., 0.)  # um Initial x and y offsets of bunch 2
     bunch2.set_beta(0., 0., -1.)  # Dimensionless velocity of bunch 2 moving in -z direction
-    # bunch2.set_sigma(150., 150., 4 * bunch1.c)  # um Width of bunch 2 in x, y, z
     bunch2.set_sigma(150., 150., 1.3e6)  # um Width of bunch 2 in x, y, z
-    # bunch2.set_angle(1.5e-3 / 2)  # Rotate bunch 2 in the y-z plane
-    # bunch2.set_angle(1.e-4 / 2)  # Rotate bunch 2 in the y-z plane
+    bunch2.set_angles(0., -0.115e-3)  # rad Rotate bunch 2 in the x-z and y-z planes
     bunch2.beta_star = beta_star
 
     n_propagation_points = 50
@@ -173,9 +169,7 @@ def animate_bunch_collision():
     animation_save_name = 'test.gif'
 
     # Set timestep for propagation
-    # bunch1.dt = bunch2.dt = 1e-2  # ns Timestep to propagate both bunches
-    bunch1.dt = bunch2.dt = (bunch2.r[2] - bunch1.r[
-        2]) / bunch1.c / n_propagation_points  # ns Timestep to propagate both bunches
+    bunch1.dt = bunch2.dt = (bunch2.initial_z - bunch1.initial_z) / bunch1.c / n_propagation_points
     max_bunch1_density = 1. / (2 * np.pi * bunch1.sigma[0] * bunch1.sigma[1] * bunch1.sigma[2])
     max_bunch2_density = 1. / (2 * np.pi * bunch2.sigma[0] * bunch2.sigma[1] * bunch2.sigma[2])
     max_bunch_density_sum = max_bunch1_density + max_bunch2_density
@@ -224,35 +218,6 @@ def animate_bunch_collision():
     # Adjust layout: no space between plots horizontally or vertically
     fig.tight_layout()
     fig.subplots_adjust(wspace=0, hspace=0)
-
-    # # Set up the figure for density product visualization
-    # fig, ax = plt.subplots(2, 1)
-    # im_xz = ax[0].imshow(np.zeros((x.size, z.size)), extent=[z.min(), z.max(), x.min(), x.max()],
-    #                      origin='lower', cmap='jet', vmin=0, vmax=max_bunch_density_product, aspect='auto')
-    # im_yz = ax[1].imshow(np.zeros((y.size, z.size)), extent=[z.min(), z.max(), y.min(), y.max()],
-    #                      origin='lower', cmap='jet', vmin=0, vmax=max_bunch_density_product, aspect='auto')
-    #
-    # ax[0].set_title('Density Product in x-z and y-x Planes')
-    # ax[0].set_xlabel('z (um)')
-    # ax[0].set_ylabel('x (um)')
-    # ax[1].set_xlabel('z (um)')
-    # ax[1].set_ylabel('y (um)')
-    # # Set vertical space between axes to zero
-    # fig.subplots_adjust(hspace=0)
-    #
-    # # Set up a separate figure for density sum visualization
-    # fig_sum, ax_sum = plt.subplots(2, 1)
-    # im_sum_xz = ax_sum[0].imshow(np.zeros((x.size, z.size)), extent=[z.min(), z.max(), x.min(), x.max()],
-    #                              origin='lower', cmap='jet', vmin=0, vmax=max_bunch_density_sum, aspect='auto')
-    # im_sum_yz = ax_sum[1].imshow(np.zeros((y.size, z.size)), extent=[z.min(), z.max(), y.min(), y.max()],
-    #                              origin='lower', cmap='jet', vmin=0, vmax=max_bunch_density_sum, aspect='auto')
-    #
-    # ax_sum[0].set_title('Density Sum in x-z and y-z Planes')
-    # ax_sum[0].set_xlabel('z (um)')
-    # ax_sum[0].set_ylabel('x (um)')
-    # ax_sum[1].set_xlabel('z (um)')
-    # ax_sum[1].set_ylabel('y (um)')
-    # fig_sum.subplots_adjust(hspace=0)
 
     integrated_density_product_z = np.zeros_like(z)
     fig_z_slices, ax_z_slices = plt.subplots(2, 1)
