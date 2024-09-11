@@ -11,9 +11,11 @@ Created as sphenix_polarimetry/vernier_z_vertex_fitting
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import PercentFormatter
+from matplotlib.backends.backend_pdf import PdfPages
 from scipy.optimize import minimize
 from scipy.optimize import curve_fit as cf
 from scipy.interpolate import interp1d
+import pandas as pd
 
 import uproot
 import awkward as ak
@@ -24,22 +26,179 @@ from Measure import Measure
 
 
 def main():
-    # vernier_scan_date = 'Aug12'
-    vernier_scan_date = 'Jul11'
+    vernier_scan_date = 'Aug12'
+    # vernier_scan_date = 'Jul11'
+    # base_path = '/local/home/dn277127/Bureau/vernier_scan/'
+    base_path = 'C:/Users/Dylan/Desktop/vernier_scan/'
     dist_root_file_name = f'vernier_scan_{vernier_scan_date}_mbd_vertex_z_distributions.root'
-    z_vertex_root_path = f'/local/home/dn277127/Bureau/vernier_scan/vertex_data/{dist_root_file_name}'
+    z_vertex_root_path = f'{base_path}vertex_data/{dist_root_file_name}'
+    cad_measurement_path = f'{base_path}CAD_Measurements/VernierScan_{vernier_scan_date}_combined.dat'
+    pdf_out_path = f'{base_path}/Analysis/sim_vs_mbd_cad_params_{vernier_scan_date}.pdf'
     # z_vertex_root_path = f'C:/Users/Dylan/Desktop/vernier_scan/vertex_data/{dist_root_file_name}'
     # fit_head_on(z_vertex_root_path)
     # fit_head_on_manual(z_vertex_root_path)
-    # plot_peripheral(z_vertex_root_path)
+    plot_peripheral(z_vertex_root_path)
     # fit_peripheral(z_vertex_root_path)
     # fit_peripheral_scipy(z_vertex_root_path)
     # peripheral_metric_test(z_vertex_root_path)
-    # peripheral_metric_sensitivity(z_vertex_root_path)
+    # peripheral_metric_sensitivity(base_path, z_vertex_root_path)
     # check_head_on_dependences(z_vertex_root_path)
-    plot_all_z_vertex_hists(z_vertex_root_path)
+    # plot_all_z_vertex_hists(z_vertex_root_path)
+    # sim_cad_params(z_vertex_root_path, cad_measurement_path, pdf_out_path)
 
     print('donzo')
+
+
+def sim_cad_params(z_vertex_root_path, cad_measurement_path, pdf_out_path):
+    """
+    Run simulation with CAD measurements and compare to MBD distributions.
+    """
+
+    cad_data = read_cad_measurement_file(cad_measurement_path)
+    print(cad_data)
+
+    z_vertex_hists = get_mbd_z_dists(z_vertex_root_path, first_dist=False)
+
+    # Important parameters
+    bw_nom = 135
+    beta_star_nom = 85.
+    mbd_online_resolution = 5.0  # cm MBD resolution on trigger level
+
+    # Will be overwritten by CAD values
+    y_offset_nom = +750.
+    bl1_nom = 130.e4
+    bl2_nom = 117.e4
+    angle_nom = +0.14e-3
+
+    collider_sim = BunchCollider()
+    collider_sim.set_bunch_rs(np.array([0., y_offset_nom, -6.e6]), np.array([0., 0., +6.e6]))
+    collider_sim.set_bunch_beta_stars(beta_star_nom, beta_star_nom)
+    collider_sim.set_bunch_sigmas(np.array([bw_nom, bw_nom, bl1_nom]), np.array([bw_nom, bw_nom, bl2_nom]))
+    collider_sim.set_bunch_crossing(0, angle_nom, 0, 0)
+    collider_sim.set_gaus_smearing_sigma(mbd_online_resolution)
+
+    # Sort z_vertex_hists by scan axis and step, horizontal first
+    z_vertex_hists = sorted(z_vertex_hists, key=lambda x: (x['scan_axis'], int(x['scan_step'])))
+
+    for hist_data in z_vertex_hists:
+        scan_orientation = hist_data['scan_axis']
+        step_cad_data = cad_data[cad_data['orientation'] == scan_orientation].iloc[int(hist_data['scan_step'])]
+        print(f'\nOrientation: {hist_data["scan_axis"]}, Step: {hist_data["scan_step"]}')
+        print(step_cad_data)
+
+        # Blue from left to right, yellow from right to left
+        # Negative angle moves blue bunch from positive value to negative value, yellow from negative to positive
+        # Offset blue bunch, fix yellow bunch at (0, 0)
+        # Angle in x axis --> horizontal, negative angle from cad goes from negative to positive, flip of my convention
+        # Horizontal scan in x, vertical scan in y
+        offset = step_cad_data['offset_set_val'] * 1e3  # mm to um
+        blue_angle, yellow_angle = -step_cad_data['bh8_avg'] / 1e3, -step_cad_data['yh8_avg'] / 1e3  # mrad to rad
+        blue_angle_min, blue_angle_max = -step_cad_data['bh8_min'] / 1e3, -step_cad_data['bh8_max'] / 1e3
+        yellow_angle_min, yellow_angle_max = -step_cad_data['yh8_min'] / 1e3, -step_cad_data['yh8_max'] / 1e3
+        blue_bunch_len, yellow_bunch_len = step_cad_data['blue_bunch_length'], step_cad_data['yellow_bunch_length']
+        blue_bunch_len, yellow_bunch_len = blue_bunch_len * 1e6, yellow_bunch_len * 1e6  # m to microns
+
+        print(f'Offset: {offset}, Blue Angle: {blue_angle}, Yellow Angle: {yellow_angle}, Blue Bunch Length: {blue_bunch_len}, Yellow Bunch Length: {yellow_bunch_len}')
+
+        if scan_orientation == 'Horizontal':
+            collider_sim.set_bunch_offsets(np.array([offset, 0.]), np.array([0., 0.]))
+        elif scan_orientation == 'Vertical':
+            collider_sim.set_bunch_offsets(np.array([0., offset]), np.array([0., 0.]))
+
+        collider_sim.set_bunch_crossing(blue_angle, 0, yellow_angle, 0)
+        blue_bunch_sigma = np.array([bw_nom, bw_nom, blue_bunch_len])
+        yellow_bunch_sigma = np.array([bw_nom, bw_nom, yellow_bunch_len])
+        collider_sim.set_bunch_sigmas(blue_bunch_sigma, yellow_bunch_sigma)
+
+        collider_sim.set_amplitude(1.0)
+        collider_sim.set_z_shift(0.0)
+        collider_sim.run_sim()
+
+        zs, z_dist = collider_sim.get_z_density_dist()
+        scale = max(hist_data['counts']) / max(z_dist)
+        z_max_sim = zs[np.argmax(z_dist)]
+        z_max_hist = hist_data['centers'][np.argmax(hist_data['counts'])]
+        shift = z_max_sim - z_max_hist  # microns
+
+        res = minimize(amp_shift_residual, np.array([1.0, 0.0]),
+                       args=(collider_sim, scale, shift, hist_data['counts'], hist_data['centers']),
+                       bounds=((0.0, 2.0), (-10, 10)))
+        scale = res.x[0] * scale
+        shift = res.x[1] + shift
+
+        collider_sim.set_amplitude(scale)
+        collider_sim.set_z_shift(shift)
+        zs, z_dist = collider_sim.get_z_density_dist()
+
+        collider_param = collider_sim.get_param_string()
+
+        resid = np.sum((hist_data['counts'] - interp1d(zs, z_dist)(hist_data['centers'])) ** 2)
+
+        min_z_dist, max_z_dist = get_min_max_angles(collider_sim, hist_data, hist_data['centers'],
+                                                    blue_angle_min, blue_angle_max, yellow_angle_min, yellow_angle_max)
+
+        fig, ax = plt.subplots(figsize=(8, 7))
+        bin_width = hist_data['centers'][1] - hist_data['centers'][0]
+        ax.bar(hist_data['centers'], hist_data['counts'], width=bin_width, label='MBD Vertex')
+        ax.plot(zs, z_dist, color='r', label='Simulation')
+        ax.fill_between(hist_data['centers'], min_z_dist, max_z_dist, color='r', alpha=0.3)
+        ax.set_xlim(-399, 399)
+        ax.set_title(f'{hist_data["scan_axis"]} Scan Step {hist_data["scan_step"]} | {offset} um')
+        ax.set_xlabel('z Vertex Position (cm)')
+        ax.annotate(f'{collider_param}', (0.01, 0.99), xycoords='axes fraction', verticalalignment='top')
+        ax.legend(loc='upper right')
+        fig.tight_layout()
+        # plt.show()
+
+    with PdfPages(pdf_out_path) as pdf:
+        for fig_num in plt.get_fignums():
+            pdf.savefig(plt.figure(fig_num))
+            plt.close(fig_num)
+
+
+def get_min_max_angles(collider_sim, hist_data, def_zs,
+                       min_blue_x_angle, max_blue_x_angle, min_yellow_x_angle, max_yellow_x_angle):
+    """
+    Run combinations of blue and yellow crossing angles and get z_vertex distributions for each. From these create
+    interp_1Ds. Finally, combine these to find the minimum and maximum z_vertex distributions.
+    """
+    z_dists = []
+    for blue_angle in [min_blue_x_angle, max_blue_x_angle]:
+        for yellow_angle in [min_yellow_x_angle, max_yellow_x_angle]:
+            collider_sim.set_bunch_crossing(blue_angle, 0, yellow_angle, 0)
+            collider_sim.set_amplitude(1.0)
+            collider_sim.set_z_shift(0.0)
+            collider_sim.run_sim()
+
+            zs, z_dist = collider_sim.get_z_density_dist()
+            scale = max(hist_data['counts']) / max(z_dist)
+            z_max_sim = zs[np.argmax(z_dist)]
+            z_max_hist = hist_data['centers'][np.argmax(hist_data['counts'])]
+            shift = z_max_sim - z_max_hist  # microns
+
+            res = minimize(amp_shift_residual, np.array([1.0, 0.0]),
+                           args=(collider_sim, scale, shift, hist_data['counts'], hist_data['centers']),
+                           bounds=((0.0, 2.0), (-10, 10)))
+            scale = res.x[0] * scale
+            shift = res.x[1] + shift
+
+            collider_sim.set_amplitude(scale)
+            collider_sim.set_z_shift(shift)
+            zs, z_dist = collider_sim.get_z_density_dist()
+            z_dists.append(interp1d(zs, z_dist)(def_zs))
+
+    min_z_dist = np.min(z_dists, axis=0)
+    max_z_dist = np.max(z_dists, axis=0)
+    return min_z_dist, max_z_dist
+
+
+
+def read_cad_measurement_file(cad_measurement_path):
+    """
+    Read CAD measurement file and return pandas data frame. First row is header, first column is index.
+    """
+    cad_data = pd.read_csv(cad_measurement_path, sep='\t', header=0, index_col=0)
+    return cad_data
 
 
 def check_head_on_dependences(z_vertex_root_path):
@@ -209,7 +368,9 @@ def plot_peripheral(z_vertex_root_path):
     collider_sim.set_bunch_beta_stars(85., 85.)
     beam_width = 135.
     collider_sim.set_bunch_sigmas(np.array([beam_width, beam_width, 130.e4]), np.array([beam_width, beam_width, 117.e4]))
-    collider_sim.set_bunch_crossing(-0.01e-3, -0.125e-3, +0.01e-3, -0.07e-3)
+    collider_sim.set_bunch_crossing(-0.03e-3, -0.125e-3, +0.03e-3, -0.07e-3)
+    collider_sim.set_gaus_smearing_sigma(5.0)
+    collider_sim.set_bunch_delays(-0.3, 0)
     collider_sim.set_amplitude(1.0)
     collider_sim.set_z_shift(0.0)
 
@@ -240,11 +401,12 @@ def plot_peripheral(z_vertex_root_path):
     ax.bar(hist['centers'], hist['counts'], width=bin_width, label='MBD Vertex')
     ax.plot(zs_og, z_dist_og, color='gray', ls='--', alpha=0.6, label='Simulation Guess')
     ax.plot(zs, z_dist, color='r', label='Simulation Fit')
+    ax.set_xlim(-399, 399)
     ax.set_title(f'{hist["scan_axis"]} Scan Step {hist["scan_step"]}')
     ax.set_xlabel('z Vertex Position (cm)')
-    ax.annotate(f'{collider_param}', (0.02, 0.75), xycoords='axes fraction',
+    ax.annotate(f'{collider_param}', (0.01, 0.99), xycoords='axes fraction', vertical_alignment='top',
                 bbox=dict(facecolor='wheat', alpha=0.5))
-    ax.legend()
+    ax.legend(loc='upper right')
     fig.tight_layout()
 
     plt.show()
@@ -492,12 +654,12 @@ def peripheral_metric_test(z_vertex_root_path):
     plt.show()
 
 
-def peripheral_metric_sensitivity(z_vertex_root_path):
+def peripheral_metric_sensitivity(base_path, z_vertex_root_path):
     z_vertex_hists = get_mbd_z_dists(z_vertex_root_path, False)
     hist = z_vertex_hists[-1]
     metrics_data = get_dist_metrics(hist['centers'], hist['counts'])
 
-    out_dir = '/local/home/dn277127/Bureau/vernier_scan/Analysis/metric_sensitivities/'
+    out_dir = f'{base_path}Analysis/metric_sensitivities/'
 
     y_offset_nom = +750.
     bw_nom = 135
