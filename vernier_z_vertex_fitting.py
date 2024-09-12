@@ -28,8 +28,8 @@ from Measure import Measure
 def main():
     vernier_scan_date = 'Aug12'
     # vernier_scan_date = 'Jul11'
-    # base_path = '/local/home/dn277127/Bureau/vernier_scan/'
-    base_path = 'C:/Users/Dylan/Desktop/vernier_scan/'
+    base_path = '/local/home/dn277127/Bureau/vernier_scan/'
+    # base_path = 'C:/Users/Dylan/Desktop/vernier_scan/'
     dist_root_file_name = f'vernier_scan_{vernier_scan_date}_mbd_vertex_z_distributions.root'
     z_vertex_root_path = f'{base_path}vertex_data/{dist_root_file_name}'
     cad_measurement_path = f'{base_path}CAD_Measurements/VernierScan_{vernier_scan_date}_combined.dat'
@@ -44,7 +44,7 @@ def main():
     # peripheral_metric_sensitivity(base_path, z_vertex_root_path)
     # check_head_on_dependences(z_vertex_root_path)
     # plot_all_z_vertex_hists(z_vertex_root_path)
-    # sim_cad_params(z_vertex_root_path, cad_measurement_path, pdf_out_path)
+    sim_cad_params(z_vertex_root_path, cad_measurement_path, pdf_out_path)
 
     print('donzo')
 
@@ -91,10 +91,13 @@ def sim_cad_params(z_vertex_root_path, cad_measurement_path, pdf_out_path):
         # Offset blue bunch, fix yellow bunch at (0, 0)
         # Angle in x axis --> horizontal, negative angle from cad goes from negative to positive, flip of my convention
         # Horizontal scan in x, vertical scan in y
+        xing_uncert = 50.  # microradians
         offset = step_cad_data['offset_set_val'] * 1e3  # mm to um
         blue_angle, yellow_angle = -step_cad_data['bh8_avg'] / 1e3, -step_cad_data['yh8_avg'] / 1e3  # mrad to rad
-        blue_angle_min, blue_angle_max = -step_cad_data['bh8_min'] / 1e3, -step_cad_data['bh8_max'] / 1e3
-        yellow_angle_min, yellow_angle_max = -step_cad_data['yh8_min'] / 1e3, -step_cad_data['yh8_max'] / 1e3
+        # blue_angle_min, blue_angle_max = -step_cad_data['bh8_min'] / 1e3, -step_cad_data['bh8_max'] / 1e3
+        blue_angle_min, blue_angle_max = blue_angle - xing_uncert * 1e-6, blue_angle + xing_uncert * 1e-6
+        # yellow_angle_min, yellow_angle_max = -step_cad_data['yh8_min'] / 1e3, -step_cad_data['yh8_max'] / 1e3
+        yellow_angle_min, yellow_angle_max = yellow_angle - xing_uncert * 1e-6, yellow_angle + xing_uncert * 1e-6
         blue_bunch_len, yellow_bunch_len = step_cad_data['blue_bunch_length'], step_cad_data['yellow_bunch_length']
         blue_bunch_len, yellow_bunch_len = blue_bunch_len * 1e6, yellow_bunch_len * 1e6  # m to microns
 
@@ -152,6 +155,7 @@ def sim_cad_params(z_vertex_root_path, cad_measurement_path, pdf_out_path):
 
     with PdfPages(pdf_out_path) as pdf:
         for fig_num in plt.get_fignums():
+            # plt.savefig(plt.figure(fig_num), format='png')
             pdf.savefig(plt.figure(fig_num))
             plt.close(fig_num)
 
@@ -368,8 +372,9 @@ def plot_peripheral(z_vertex_root_path):
     collider_sim.set_bunch_beta_stars(85., 85.)
     beam_width = 135.
     collider_sim.set_bunch_sigmas(np.array([beam_width, beam_width, 130.e4]), np.array([beam_width, beam_width, 117.e4]))
-    collider_sim.set_bunch_crossing(-0.03e-3, -0.125e-3, +0.03e-3, -0.07e-3)
+    collider_sim.set_bunch_crossing(-0.03e-3, -0.18e-3, +0.03e-3, -0.05e-3)
     collider_sim.set_gaus_smearing_sigma(5.0)
+    collider_sim.set_bkg(1e-30)
     collider_sim.set_bunch_delays(-0.3, 0)
     collider_sim.set_amplitude(1.0)
     collider_sim.set_z_shift(0.0)
@@ -404,7 +409,7 @@ def plot_peripheral(z_vertex_root_path):
     ax.set_xlim(-399, 399)
     ax.set_title(f'{hist["scan_axis"]} Scan Step {hist["scan_step"]}')
     ax.set_xlabel('z Vertex Position (cm)')
-    ax.annotate(f'{collider_param}', (0.01, 0.99), xycoords='axes fraction', vertical_alignment='top',
+    ax.annotate(f'{collider_param}', (0.01, 0.99), xycoords='axes fraction', verticalalignment='top',
                 bbox=dict(facecolor='wheat', alpha=0.5))
     ax.legend(loc='upper right')
     fig.tight_layout()

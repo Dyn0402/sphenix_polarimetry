@@ -145,8 +145,8 @@ def animate_bunch_collision():
     beta_star = 85  # cm
 
     # Set initial positions, velocities, and widths for the two bunches
-    bunch1.set_initial_z(-500.e4)  # um Initial z position of bunch 1
-    bunch1.set_offsets(+900., 0.)  # um Initial x and y offsets of bunch 1
+    bunch1.set_initial_z(-600.e4)  # um Initial z position of bunch 1
+    bunch1.set_offsets(-900., 0.)  # um Initial x and y offsets of bunch 1
     bunch1.set_beta(0., 0., 1.)  # Dimensionless velocity of bunch 1 moving in +z direction
     bunch1.set_sigma(150., 150., 1.3e6)  # um Width of bunch 1 in x, y, z
     bunch1.set_angles(-0.075e-3, 0.0)  # rad Rotate bunch 1 in the x-z and y-z planes
@@ -156,7 +156,7 @@ def animate_bunch_collision():
     bunch2.set_offsets(0., 0.)  # um Initial x and y offsets of bunch 2
     bunch2.set_beta(0., 0., -1.)  # Dimensionless velocity of bunch 2 moving in -z direction
     bunch2.set_sigma(150., 150., 1.3e6)  # um Width of bunch 2 in x, y, z
-    bunch2.set_angles(-0.115e-3, 0.0)  # rad Rotate bunch 2 in the x-z and y-z planes
+    # bunch2.set_angles(-0.115e-3, 0.0)  # rad Rotate bunch 2 in the x-z and y-z planes
     bunch2.beta_star = beta_star
 
     n_propagation_points = 50
