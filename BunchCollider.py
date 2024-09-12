@@ -38,6 +38,8 @@ class BunchCollider:
         self.z_shift = 0.  # microns Distance to shift the center of the collisions along beam axis
         self.amplitude = 1.  # arb Scale amplitude of z-distribution by this amount
 
+        self.bkg = 1e-20 * 0.  # Background density to add to the density product, interpret as air density
+
         self.z_bounds = (-265. * 1e4, 265. * 1e4)
 
         self.gaus_smearing_sigma = None
@@ -102,6 +104,9 @@ class BunchCollider:
         self.bunch1.set_delay(delay1)
         self.bunch2.set_delay(delay2)
 
+    def set_bkg(self, bkg):
+        self.bkg = bkg
+
     def run_sim(self, print_params=False):
         # Reset
         self.set_bunch_rs(self.bunch1_r_original, self.bunch2_r_original)
@@ -139,6 +144,10 @@ class BunchCollider:
 
             # Calculate the density product
             density_product_xyz = density1_xyz * density2_xyz
+
+            # Add background
+            density_product_xyz += density1_xyz * self.bkg + density2_xyz * self.bkg
+
             if self.average_density_product_xyz is None:
                 self.average_density_product_xyz = density_product_xyz
             else:
