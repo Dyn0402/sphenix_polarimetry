@@ -9,7 +9,7 @@ Created as sphenix_polarimetry/BunchCollider.py
 """
 
 import numpy as np
-from multiprocessing import Pool
+from concurrent.futures import ProcessPoolExecutor as Pool
 from scipy.ndimage import gaussian_filter1d
 
 from BunchDensity import BunchDensity
@@ -52,6 +52,9 @@ class BunchCollider:
         self.n_points_y = 61
         self.n_points_z = 151
         self.n_points_t = 60
+
+        self.bunch1_longitudinal_fit_parameter_path = None
+        self.bunch2_longitudinal_fit_parameter_path = None
 
         self.x, self.y, self.z = None, None, None
         self.average_density_product_xyz = None
@@ -107,6 +110,12 @@ class BunchCollider:
     def set_bkg(self, bkg):
         self.bkg = bkg
 
+    def set_longitudinal_fit_parameters_from_file(self, bunch1_path, bunch2_path):
+        self.bunch1_longitudinal_fit_parameter_path = bunch1_path
+        self.bunch2_longitudinal_fit_parameter_path = bunch2_path
+        self.bunch1.read_longitudinal_beam_profile_fit_parameters_from_file(bunch1_path)
+        self.bunch2.read_longitudinal_beam_profile_fit_parameters_from_file(bunch2_path)
+
     def run_sim(self, print_params=False):
         # Reset
         self.set_bunch_rs(self.bunch1_r_original, self.bunch2_r_original)
@@ -120,17 +129,17 @@ class BunchCollider:
         self.bunch1.dt = self.bunch2.dt = dt  # ns Timestep to propagate both bunches
 
         # Create a grid of points for the x-z and y-z planes
-        self.x = np.linspace(-self.x_lim_sigma * self.bunch1.sigma[0], self.x_lim_sigma * self.bunch1.sigma[0],
+        self.x = np.linspace(-self.x_lim_sigma * self.bunch1.transverse_sigma[0], self.x_lim_sigma * self.bunch1.transverse_sigma[0],
                              self.n_points_x)
-        self.y = np.linspace(-self.y_lim_sigma * self.bunch1.sigma[1], self.y_lim_sigma * self.bunch1.sigma[1],
+        self.y = np.linspace(-self.y_lim_sigma * self.bunch1.transverse_sigma[1], self.y_lim_sigma * self.bunch1.transverse_sigma[1],
                              self.n_points_y)
         if self.z_bounds is not None:
             self.z = np.linspace(self.z_bounds[0], self.z_bounds[1], self.n_points_z)
         else:
             min_z = min(self.bunch1_r_original[2], self.bunch2_r_original[2])
             max_z = max(self.bunch1_r_original[2], self.bunch2_r_original[2])
-            self.z = np.linspace(min_z - self.z_lim_sigma * self.bunch1.sigma[2],
-                                 max_z + self.z_lim_sigma * self.bunch1.sigma[2], self.n_points_z)
+            self.z = np.linspace(min_z - self.z_lim_sigma * self.bunch1.transverse_sigma[2],
+                                 max_z + self.z_lim_sigma * self.bunch1.transverse_sigma[2], self.n_points_z)
 
         x_3d, y_3d, z_3d = np.meshgrid(self.x, self.y, self.z, indexing='ij')  # For 3D space
         self.bunch1.calculate_r_and_beta()
@@ -163,51 +172,65 @@ class BunchCollider:
         :param time_step_index: Index of the time step to compute
         :return: Density product for the given time step
         """
-        self.bunch1.propagate()
-        self.bunch2.propagate()
+        bunch1_copy = self.bunch1.copy()
+        bunch2_copy = self.bunch2.copy()
+        bunch1_copy.propagate_n_steps(time_step_index)
+        bunch2_copy.propagate_n_steps(time_step_index)
 
         # Create a grid of points for the x-y-z planes
         x_3d, y_3d, z_3d = np.meshgrid(self.x, self.y, self.z, indexing='ij')
 
-        density1_xyz = self.bunch1.density(x_3d, y_3d, z_3d)
-        density2_xyz = self.bunch2.density(x_3d, y_3d, z_3d)
+        density1_xyz =  bunch1_copy.density(x_3d, y_3d, z_3d)
+        density2_xyz = bunch2_copy.density(x_3d, y_3d, z_3d)
 
         # Calculate the density product
         density_product_xyz = density1_xyz * density2_xyz
 
+        # Add background
+        density_product_xyz += density1_xyz * self.bkg + density2_xyz * self.bkg
+
         return density_product_xyz
 
-    def run_sim_parallel(self):
+    def run_sim_parallel(self, print_params=False):
         # Reset
-        self.bunch1.set_r(*self.bunch1_r_original)
-        self.bunch2.set_r(*self.bunch2_r_original)
+        self.set_bunch_rs(self.bunch1_r_original, self.bunch2_r_original)
         self.bunch1.set_beta(*self.bunch1_beta_original)
         self.bunch2.set_beta(*self.bunch2_beta_original)
-        self.bunch1.set_angle(self.bunch1.angle)
-        self.bunch2.set_angle(self.bunch2.angle)
+        self.bunch1.set_angles(self.bunch1.angle_x, self.bunch1.angle_y)
         self.average_density_product_xyz = None
 
         # Set timestep for propagation
-        dt = (self.bunch2.r[2] - self.bunch1.r[2]) / self.bunch1.c / self.n_points_t
-        self.bunch1.dt = self.bunch2.dt = dt
+        dt = (self.bunch2.initial_z - self.bunch1.initial_z) / self.bunch1.c / self.n_points_t
+        self.bunch1.dt = self.bunch2.dt = dt  # ns Timestep to propagate both bunches
 
         # Create a grid of points for the x-z and y-z planes
-        self.x = np.linspace(-self.x_lim_sigma * self.bunch1.sigma[0], self.x_lim_sigma * self.bunch1.sigma[0],
+        self.x = np.linspace(-self.x_lim_sigma * self.bunch1.transverse_sigma[0],
+                             self.x_lim_sigma * self.bunch1.transverse_sigma[0],
                              self.n_points_x)
-        self.y = np.linspace(-self.y_lim_sigma * self.bunch1.sigma[1], self.y_lim_sigma * self.bunch1.sigma[1],
+        self.y = np.linspace(-self.y_lim_sigma * self.bunch1.transverse_sigma[1],
+                             self.y_lim_sigma * self.bunch1.transverse_sigma[1],
                              self.n_points_y)
-        self.z = np.linspace(-self.z_lim_sigma * self.bunch1.sigma[2], self.z_lim_sigma * self.bunch1.sigma[2],
-                             self.n_points_z)
+        if self.z_bounds is not None:
+            self.z = np.linspace(self.z_bounds[0], self.z_bounds[1], self.n_points_z)
+        else:
+            min_z = min(self.bunch1_r_original[2], self.bunch2_r_original[2])
+            max_z = max(self.bunch1_r_original[2], self.bunch2_r_original[2])
+            self.z = np.linspace(min_z - self.z_lim_sigma * self.bunch1.transverse_sigma[2],
+                                 max_z + self.z_lim_sigma * self.bunch1.transverse_sigma[2], self.n_points_z)
 
-        # Create a pool of workers to compute each time step in parallel
+        # x_3d, y_3d, z_3d = np.meshgrid(self.x, self.y, self.z, indexing='ij')  # For 3D space
+        self.bunch1.calculate_r_and_beta()
+        self.bunch2.calculate_r_and_beta()
+        if print_params:
+            print(self)
+
+        self.average_density_product_xyz = 0
         with Pool() as pool:
-            results = pool.map(self.compute_time_step, range(self.n_points_t))
-
-        # Accumulate the results
-        self.average_density_product_xyz = np.sum(results, axis=0) / self.n_points_t
+            density_products = pool.map(self.compute_time_step, range(self.n_points_t))
+        self.average_density_product_xyz = np.mean([p for p in density_products], axis=0)
 
     def get_beam_sigmas(self):
-        return self.bunch1.sigma, self.bunch2.sigma
+        return self.bunch1.transverse_sigma, self.bunch2.transverse_sigma
 
     def get_z_density_dist(self):
         z_vals = (self.z - self.z_shift) / 1e4  # um to cm
@@ -219,8 +242,8 @@ class BunchCollider:
 
     def get_param_string(self):
         param_string = (f'Beta*s: {self.bunch1.beta_star:.1f}, {self.bunch2.beta_star:.1f} cm\n'
-                        f'Beam Widths: {self.bunch1.sigma[0]:.1f}, {self.bunch2.sigma[0]:.1f} um\n'
-                        f'Beam Lengths: {self.bunch1.sigma[2] / 1e4:.1f}, {self.bunch2.sigma[2] / 1e4:.1f} cm\n'
+                        f'Beam Widths: {self.bunch1.transverse_sigma[0]:.1f}, {self.bunch2.transverse_sigma[0]:.1f} um\n'
+                        f'Beam Lengths: {self.bunch1.get_beam_length() / 1e4:.1f}, {self.bunch2.get_beam_length() / 1e4:.1f} cm\n'
                         f'Crossing Angles y: {self.bunch1.angle_y * 1e3:.2f}, {self.bunch2.angle_y * 1e3:.2f} mrad\n'
                         f'Crossing Angles x: {self.bunch1.angle_x * 1e3:.2f}, {self.bunch2.angle_x * 1e3:.2f} mrad\n'
                         f'Beam Offsets: {np.sqrt(np.sum(self.bunch1_r_original[:2] ** 2)):.0f}, '

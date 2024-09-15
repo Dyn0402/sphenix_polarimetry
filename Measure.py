@@ -12,6 +12,8 @@ Updated version copied from UCLA_Nuclear on 3/16/21
 
 import math
 
+import numpy as np
+
 
 class Measure:
     def __init__(self, val=0, err=0):
@@ -199,10 +201,13 @@ class Measure:
     def __str__(self):
         dec = err_dec(self.err)
         f_or_e = float_or_exp(self.val, dec)
-        if f_or_e == 'e':
-            precision = 1 + math.floor(math.log10(self.val / self.err))
+        if f_or_e == 'e' and self.err != 0 and np.isfinite(self.err):
+            precision = 1 + math.floor(math.log10(abs(self.val / self.err)))
             val, err = match_exponents(self.val, self.err, precision)
-            return f'{val} ± {err}'
+            e_str = f'{val} ± {err}'
+            f_str = f'{self.val:.{dec}f} ± {self.err:.{dec}f}'
+            if len(e_str) < len(f_str):
+                return e_str
         return f'{self.val:.{dec}f} ± {self.err:.{dec}f}'
 
     def __repr__(self):

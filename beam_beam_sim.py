@@ -81,9 +81,9 @@ def simulate_vernier_scan():
                 2]) / bunch1.c / n_propagation_points  # ns Timestep to propagate both bunches
 
             # Create a grid of points for the x-z and y-z planes
-            x = np.linspace(-xy_lim_sigma * bunch1.sigma[0], xy_lim_sigma * bunch1.sigma[0], n_density_points)
-            y = np.linspace(-xy_lim_sigma * bunch1.sigma[1], xy_lim_sigma * bunch1.sigma[1], n_density_points)
-            z = np.linspace(-z_lim_sigma * bunch1.sigma[2], z_lim_sigma * bunch1.sigma[2], n_density_points + 5)
+            x = np.linspace(-xy_lim_sigma * bunch1.transverse_sigma[0], xy_lim_sigma * bunch1.transverse_sigma[0], n_density_points)
+            y = np.linspace(-xy_lim_sigma * bunch1.transverse_sigma[1], xy_lim_sigma * bunch1.transverse_sigma[1], n_density_points)
+            z = np.linspace(-z_lim_sigma * bunch1.transverse_sigma[2], z_lim_sigma * bunch1.transverse_sigma[2], n_density_points + 5)
 
             X_3d, Y_3d, Z_3d = np.meshgrid(x, y, z, indexing='ij')  # For 3D space
 
@@ -139,6 +139,9 @@ def simulate_vernier_scan():
 
 
 def animate_bunch_collision():
+    scan_date = 'Aug12'
+    fit_path = f'C:/Users/Dylan/Desktop/vernier_scan/CAD_Measurements/VernierScan_{scan_date}_COLOR_longitudinal_fit.dat'
+
     # Initialize two bunches
     bunch1 = BunchDensity()
     bunch2 = BunchDensity()
@@ -146,11 +149,12 @@ def animate_bunch_collision():
 
     # Set initial positions, velocities, and widths for the two bunches
     bunch1.set_initial_z(-600.e4)  # um Initial z position of bunch 1
-    bunch1.set_offsets(-900., 0.)  # um Initial x and y offsets of bunch 1
+    bunch1.set_offsets(+900., 0.)  # um Initial x and y offsets of bunch 1
     bunch1.set_beta(0., 0., 1.)  # Dimensionless velocity of bunch 1 moving in +z direction
     bunch1.set_sigma(150., 150., 1.3e6)  # um Width of bunch 1 in x, y, z
     bunch1.set_angles(-0.075e-3, 0.0)  # rad Rotate bunch 1 in the x-z and y-z planes
     bunch1.beta_star = beta_star
+    bunch1.read_longitudinal_beam_profile_fit_parameters_from_file(fit_path.replace('_COLOR_', '_blue_'))
 
     bunch2.set_initial_z(600.e4)  # um Initial z position of bunch 2
     bunch2.set_offsets(0., 0.)  # um Initial x and y offsets of bunch 2
@@ -158,6 +162,7 @@ def animate_bunch_collision():
     bunch2.set_sigma(150., 150., 1.3e6)  # um Width of bunch 2 in x, y, z
     # bunch2.set_angles(-0.115e-3, 0.0)  # rad Rotate bunch 2 in the x-z and y-z planes
     bunch2.beta_star = beta_star
+    bunch2.read_longitudinal_beam_profile_fit_parameters_from_file(fit_path.replace('_COLOR_', '_yellow_'))
 
     n_propagation_points = 50
     n_density_points = 101
@@ -170,15 +175,15 @@ def animate_bunch_collision():
 
     # Set timestep for propagation
     bunch1.dt = bunch2.dt = (bunch2.initial_z - bunch1.initial_z) / bunch1.c / n_propagation_points
-    max_bunch1_density = 1. / (2 * np.pi * bunch1.sigma[0] * bunch1.sigma[1] * bunch1.sigma[2])
-    max_bunch2_density = 1. / (2 * np.pi * bunch2.sigma[0] * bunch2.sigma[1] * bunch2.sigma[2])
+    max_bunch1_density = 1. / (2 * np.pi * bunch1.transverse_sigma[0] * bunch1.transverse_sigma[1] * bunch1.longitudinal_params['sigma1'])
+    max_bunch2_density = 1. / (2 * np.pi * bunch2.transverse_sigma[0] * bunch2.transverse_sigma[1] * bunch2.longitudinal_params['sigma1'])
     max_bunch_density_sum = max_bunch1_density + max_bunch2_density
     max_bunch_density_product = max_bunch1_density * max_bunch2_density
 
     # Create a grid of points for the x-z and y-z planes
-    x = np.linspace(-xy_lim_sigma * bunch1.sigma[0], xy_lim_sigma * bunch1.sigma[0], n_density_points)
-    y = np.linspace(-xy_lim_sigma * bunch1.sigma[1], xy_lim_sigma * bunch1.sigma[1], n_density_points)
-    z = np.linspace(-z_lim_sigma * bunch1.sigma[2], z_lim_sigma * bunch1.sigma[2], n_density_points + 5)
+    x = np.linspace(-xy_lim_sigma * bunch1.transverse_sigma[0], xy_lim_sigma * bunch1.transverse_sigma[0], n_density_points)
+    y = np.linspace(-xy_lim_sigma * bunch1.transverse_sigma[1], xy_lim_sigma * bunch1.transverse_sigma[1], n_density_points)
+    z = np.linspace(-z_lim_sigma * bunch1.longitudinal_params['sigma1'], z_lim_sigma * bunch1.longitudinal_params['sigma1'], n_density_points + 5)
 
     z_cm = z / 1e4
 
@@ -350,13 +355,13 @@ def animate_bunch_density_propagation():
     nsigma_z = 15
 
     # Create a grid of points for the x-z and y-z planes
-    x = np.linspace(-nsigma_x * bunch.sigma[0], nsigma_x * bunch.sigma[0], n_density_points_x)
-    y = np.linspace(-nsigma_y * bunch.sigma[1], nsigma_y * bunch.sigma[1], n_density_points_y)
-    z = np.linspace(-nsigma_z * bunch.sigma[2], nsigma_z * bunch.sigma[2], n_density_points_z)
+    x = np.linspace(-nsigma_x * bunch.transverse_sigma[0], nsigma_x * bunch.transverse_sigma[0], n_density_points_x)
+    y = np.linspace(-nsigma_y * bunch.transverse_sigma[1], nsigma_y * bunch.transverse_sigma[1], n_density_points_y)
+    z = np.linspace(-nsigma_z * bunch.transverse_sigma[2], nsigma_z * bunch.transverse_sigma[2], n_density_points_z)
 
     X_3d, Y_3d, Z_3d = np.meshgrid(x, y, z, indexing='ij')  # For 3D space
 
-    max_bunch_density = 1. / ((2 * np.pi)**1.5 * bunch.sigma[0] * bunch.sigma[1] * bunch.sigma[2])
+    max_bunch_density = 1. / ((2 * np.pi) ** 1.5 * bunch.transverse_sigma[0] * bunch.transverse_sigma[1] * bunch.transverse_sigma[2])
 
     fig, ax = plt.subplots(3, 1, figsize=(15, 8))
     im_xy = ax[0].imshow(np.zeros((n_density_points_y, n_density_points_x)), extent=[y.min(), y.max(), x.min(), x.max()],

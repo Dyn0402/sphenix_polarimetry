@@ -22,12 +22,13 @@ from Measure import Measure
 def main():
     # vernier_scan_date = 'Aug12'
     vernier_scan_date = 'Jul11'
-    # cad_measurements_path = 'C:/Users/Dylan/Desktop/vernier_scan/CAD_Measurements/'
-    cad_measurements_path = '/local/home/dn277127/Bureau/vernier_scan/CAD_Measurements/'
+    cad_measurements_path = 'C:/Users/Dylan/Desktop/vernier_scan/CAD_Measurements/'
+    # cad_measurements_path = '/local/home/dn277127/Bureau/vernier_scan/CAD_Measurements/'
     # crossing_angle(cad_measurements_path, vernier_scan_date)
     # bunch_length(cad_measurements_path, vernier_scan_date)
     # beam_offset_and_intensity(cad_measurements_path, vernier_scan_date)
     plot_beam_longitudinal_measurements(cad_measurements_path, vernier_scan_date)
+    plot_beam_longitudinal_measurements(cad_measurements_path, 'Aug12')
     # combine_cad_measurements(cad_measurements_path, vernier_scan_date)
     plt.show()
     print('donzo')
@@ -44,13 +45,20 @@ def plot_beam_longitudinal_measurements(cad_measurements_path, vernier_scan_date
     bnds = ([0, 0, 0, 0, 0, 0, 0, 0], [100, 10, 10, 100, 10, 10, 100, 10])
     bnds_quad = ([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [100, 10, 10, 100, 10, 10, 100, 10, 100, 100, 100])
 
+    min_time, max_time = 30, 75
+    min_val = 1.5
+    max_pdf_val = 0.125 if vernier_scan_date == 'Aug12' else 0.1
+
     plot_weird_ones = False
 
     fig, ax = plt.subplots(figsize=(12, 6))
     fig2, ax2 = plt.subplots(figsize=(12, 6))
 
     for beam_color, plot_color in zip(beam_colors, plot_colors):
-        file_path = f'{cad_measurements_path}{beam_color}_longitudinal.dat.gz'
+        file_path = f'{cad_measurements_path}VernierScan_{vernier_scan_date}_{beam_color}_longitudinal.dat.gz'
+        fit_out_path = f'{cad_measurements_path}VernierScan_{vernier_scan_date}_{beam_color}_longitudinal_fit.dat'
+        fit_plots_out_path = (f'{cad_measurements_path}Longitudinal_Bunch_Profile_Fits/'
+                              f'{vernier_scan_date}_{beam_color}_longitudinal_fit_plots.png')
         with gzip.open(file_path, 'rt') as file:
             file_content = file.read()
         lines = file_content.split('\n')
@@ -69,7 +77,7 @@ def plot_beam_longitudinal_measurements(cad_measurements_path, vernier_scan_date
         # For times less than 30 ns and greater than 75 ns set to 0
         for bunch_i, (bunch_times, bunch_vals) in enumerate(zip(times, values)):
             bunch_vals = np.array(bunch_vals)
-            bunch_vals[(np.array(bunch_times) < 30) | (np.array(bunch_times) > 75)] = 0
+            bunch_vals[(np.array(bunch_times) < min_time) | (np.array(bunch_times) > max_time)] = 0
             values[bunch_i] = bunch_vals
 
         full_time = 0
@@ -79,18 +87,18 @@ def plot_beam_longitudinal_measurements(cad_measurements_path, vernier_scan_date
             times_increasing = np.array(bunch_times)
             times_increasing += full_time
             full_time += bunch_times[-1]
-            if max_bunch_val > 1.5:
+            if max_bunch_val > min_val:
                 ax.plot(bunch_times, bunch_vals / np.max(bunch_vals), color=plot_color)
             ax2.plot(times_increasing, bunch_vals, color=plot_color)
 
         # Fit all the bunches superimposed
         fit_times, fit_vals, weird_one_times, weird_one_vals, weird_ones = [], [], [], [], 0
         for bunch_i, (bunch_times, bunch_vals) in enumerate(zip(times, values)):
-            if np.max(bunch_vals) < 1.5:
+            if np.max(bunch_vals) < min_val:
                 continue
             bin_width = bunch_times[1] - bunch_times[0]
             vals = list(np.array(bunch_vals) / np.sum(bunch_vals) / bin_width)
-            if beam_color == 'yellow' and np.max(vals) < 0.125:
+            if beam_color == 'yellow' and np.max(vals) < max_pdf_val:
                 weird_one_times.extend(bunch_times)
                 weird_one_vals.extend(vals)
                 weird_ones += 1
@@ -118,11 +126,15 @@ def plot_beam_longitudinal_measurements(cad_measurements_path, vernier_scan_date
         fit_str = '\n'.join(fit_str)
 
         # Write out quad gaussian fit equation
-        fit_eq = r'$p(t) = a_1 \exp\left(-\frac{(t - \mu_1)^2}{2\sigma_1^2}\right) + a_2 \exp\left(-\frac{(t - \mu_2)^2}{2\sigma_2^2}\right) + a_3 \exp\left(-\frac{(t - \mu_3)^2}{2\sigma_3^2}\right) + a_4 \exp\left(-\frac{(t - \mu_4)^2}{2\sigma_4^2}\right)$'
+        fit_eq = (r'$p(t) = \frac{\frac{1}{\sigma_1 \sqrt{2 \pi}} \exp\left(-\frac{(t - \mu_1)^2}{2\sigma_1^2}\right)'
+                  r'+ \frac{a_2}{\sigma_2 \sqrt{2 \pi}} \exp\left(-\frac{(t - \mu_2)^2}{2\sigma_2^2}\right)'
+                  r'+ \frac{a_3}{\sigma_3 \sqrt{2 \pi}} \exp\left(-\frac{(t - \mu_3)^2}{2\sigma_3^2}\right)'
+                  r'+ \frac{a_4}{\sigma_4 \sqrt{2 \pi}} \exp\left(-\frac{(t - \mu_4)^2}{2\sigma_4^2}\right)}'
+                  r'{1 + a_2 + a_3 + a_4}$')
 
         fig_all, ax_all = plt.subplots(figsize=(8, 6))
         x_plot = np.linspace(fit_times[0], fit_times[-1], 1000)
-        ax_all.plot(fit_times, fit_vals, color=plot_color, alpha=0.7, label='Profiles')
+        ax_all.plot(fit_times, fit_vals, color=plot_color, alpha=0.7, label='CAD Profiles')
         if len(weird_one_times) > 0 and plot_weird_ones:
             ax_all.plot(weird_one_times, weird_one_vals, color='purple', alpha=0.7, label='Weird Ones')
         # ax_all.plot(x_plot, triple_gaus_pdf(x_plot, *p0s[beam_color]), color='gray', alpha=0.3, ls='--', label='Guess')
@@ -131,16 +143,21 @@ def plot_beam_longitudinal_measurements(cad_measurements_path, vernier_scan_date
         ax_all.plot(x_plot, quad_gaus_pdf(x_plot, *popt), color='red', ls='-', label='Fit')
         ax_all.axvline(popt[0], color='green', ls='--', alpha=0.5, zorder=0)
         ax_all.set_xlabel('Time (ns)')
-        ax_all.set_ylabel('Value')
-        ax_all.set_title(f'Vernier Scan {beam_color.capitalize()} Beam Longitudinal Bunch Density')
-        ax_all.annotate(fit_str, (0.02, 0.98), xycoords='axes fraction', ha='left', va='top',
-                        bbox=dict(boxstyle='round', fc='salmon', alpha=0.2))
+        ax_all.set_ylabel('Probability Density')
+        ax_all.set_title(f'{vernier_scan_date} Vernier Scan {beam_color.capitalize()} Beam Longitudinal Bunch Density')
+        ax_all.annotate(fit_str, (0.01, 0.98), xycoords='axes fraction', ha='left', va='top',
+                        bbox=dict(boxstyle='round', fc='white', alpha=0.8), fontsize=12)
         ax_all.annotate(fit_eq, (0.02, 0.02), xycoords='axes fraction', ha='left', va='bottom',
-                        bbox=dict(boxstyle='round', fc='white', alpha=1.0))
-        ax_all.set_ylim(-0.019, 0.145)
-        ax_all.legend()
+                        bbox=dict(boxstyle='round', fc='white', alpha=1.0), fontsize=14.5)
+        ax_all.set_ylim(-0.029, 0.145)
+        ax_all.set_xlim(min_time, max_time)
+        ax_all.legend(loc='upper right', fontsize=14)
         ax_all.grid(True)
         fig_all.tight_layout()
+        fig_all.savefig(fit_plots_out_path)
+
+        # Write out fit parameters
+        write_longitudinal_beam_profile_fit_parameters(fit_out_path, beam_color, fit_eq, pmeas)
 
         # fits, fit_vals = [], []
         # for bunch_i, (bunch_times, bunch_vals) in enumerate(zip(times, values)):
@@ -206,7 +223,6 @@ def plot_beam_longitudinal_measurements(cad_measurements_path, vernier_scan_date
 
     fig.tight_layout()
     fig2.tight_layout()
-    plt.show()
 
 
 def combine_cad_measurements(cad_measurements_path, vernier_scan_date):
@@ -529,6 +545,21 @@ def append_relative_and_set_offsets(boi_data):
         new_boi_data.at[i, 'offset_set_val'] = closest_set_val
 
     return new_boi_data
+
+
+def write_longitudinal_beam_profile_fit_parameters(fit_out_path, beam_color, fit_eq, fit_parameters):
+    c = 299792458. * 1e6 / 1e9  # um/ns Speed of light
+    with open(fit_out_path, 'w') as file:
+        file.write(f'Fit Parameters for {beam_color.capitalize()} Beam Longitudinal Profile\n')
+        file.write(f'Fit Equation: {fit_eq}\n')
+        file.write(f'Fit Parameters:\n')
+        for i, (param, meas) in enumerate(zip(['mu1', 'sigma1', 'a2', 'mu2', 'sigma2', 'a3', 'mu3', 'sigma3',
+                                               'a4', 'mu4', 'sigma4'], fit_parameters)):
+            if 'mu' in param:  # Shift all mu value by the first mu value
+                meas = meas - fit_parameters[0].val
+            if 'mu' in param or 'sigma' in param:  # Convert from ns to um with speed of light
+                meas = meas * c
+            file.write(f'{param}: {meas.val}\n')
 
 
 def gaus(x, a, b, c):
