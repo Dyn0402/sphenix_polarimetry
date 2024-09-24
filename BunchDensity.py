@@ -35,6 +35,7 @@ class BunchDensity:
 
         self.longitudinal_params = {'mu1': 0., 'sigma1': 1., 'a2': 0., 'mu2': 0., 'sigma2': 1.,
                                     'a3': 0., 'mu3': 0., 'sigma3': 1., 'a4': 0., 'mu4': 0., 'sigma4': 1.}
+        self.longitudinal_width_scaling = 1.  # Scaling factor for the longitudinal beam profile
 
         self.initial_z = 0.  # Initial z distance in um
         self.offset_x = 0.  # Offset in x in um
@@ -107,6 +108,18 @@ class BunchDensity:
         """
         fit_params = read_longitudinal_beam_profile_fit_parameters(fit_out_path)
         self.longitudinal_params = fit_params
+        self.reset = True
+
+    def set_longitudinal_beam_profile_scaling(self, scaling):
+        """
+        Set the scaling of the longitudinal beam profile. Scale all fit sigmas by this factor.
+        :param scaling: float Scaling factor for the longitudinal beam profile
+        """
+        self.longitudinal_width_scaling = scaling
+        self.longitudinal_params['sigma1'] *= scaling
+        self.longitudinal_params['sigma2'] *= scaling
+        self.longitudinal_params['sigma3'] *= scaling
+        self.longitudinal_params['sigma4'] *= scaling
         self.reset = True
 
     def get_beam_length(self):

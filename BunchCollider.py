@@ -55,6 +55,8 @@ class BunchCollider:
 
         self.bunch1_longitudinal_fit_parameter_path = None
         self.bunch2_longitudinal_fit_parameter_path = None
+        self.bunch1_longitudinal_fit_scaling = 1.
+        self.bunch2_longitudinal_fit_scaling = 1.
 
         self.x, self.y, self.z = None, None, None
         self.average_density_product_xyz = None
@@ -115,6 +117,12 @@ class BunchCollider:
         self.bunch2_longitudinal_fit_parameter_path = bunch2_path
         self.bunch1.read_longitudinal_beam_profile_fit_parameters_from_file(bunch1_path)
         self.bunch2.read_longitudinal_beam_profile_fit_parameters_from_file(bunch2_path)
+
+    def set_longitudinal_fit_scaling(self, scale1, scale2):
+        self.bunch1_longitudinal_fit_scaling = scale1
+        self.bunch2_longitudinal_fit_scaling = scale2
+        self.bunch1.set_longitudinal_beam_profile_scaling(scale1)
+        self.bunch2.set_longitudinal_beam_profile_scaling(scale2)
 
     def run_sim(self, print_params=False):
         # Reset

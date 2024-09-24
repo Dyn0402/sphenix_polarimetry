@@ -20,21 +20,21 @@ from Measure import Measure
 
 
 def main():
-    # vernier_scan_date = 'Aug12'
-    vernier_scan_date = 'Jul11'
+    vernier_scan_date = 'Aug12'
+    # vernier_scan_date = 'Jul11'
     cad_measurements_path = 'C:/Users/Dylan/Desktop/vernier_scan/CAD_Measurements/'
     # cad_measurements_path = '/local/home/dn277127/Bureau/vernier_scan/CAD_Measurements/'
     # crossing_angle(cad_measurements_path, vernier_scan_date)
     # bunch_length(cad_measurements_path, vernier_scan_date)
     # beam_offset_and_intensity(cad_measurements_path, vernier_scan_date)
-    plot_beam_longitudinal_measurements(cad_measurements_path, vernier_scan_date)
-    plot_beam_longitudinal_measurements(cad_measurements_path, 'Aug12')
-    # combine_cad_measurements(cad_measurements_path, vernier_scan_date)
+    # plot_beam_longitudinal_measurements(cad_measurements_path, vernier_scan_date, False)
+    # plot_beam_longitudinal_measurements(cad_measurements_path, 'Aug12', False)
+    combine_cad_measurements(cad_measurements_path, vernier_scan_date)
     plt.show()
     print('donzo')
 
 
-def plot_beam_longitudinal_measurements(cad_measurements_path, vernier_scan_date):
+def plot_beam_longitudinal_measurements(cad_measurements_path, vernier_scan_date, write_out=False):
     beam_colors = ['blue', 'yellow']
     plot_colors = ['blue', 'orange']
 
@@ -154,10 +154,10 @@ def plot_beam_longitudinal_measurements(cad_measurements_path, vernier_scan_date
         ax_all.legend(loc='upper right', fontsize=14)
         ax_all.grid(True)
         fig_all.tight_layout()
-        fig_all.savefig(fit_plots_out_path)
 
-        # Write out fit parameters
-        write_longitudinal_beam_profile_fit_parameters(fit_out_path, beam_color, fit_eq, pmeas)
+        if write_out:  # Write out fit parameters
+            fig_all.savefig(fit_plots_out_path)
+            write_longitudinal_beam_profile_fit_parameters(fit_out_path, beam_color, fit_eq, pmeas)
 
         # fits, fit_vals = [], []
         # for bunch_i, (bunch_times, bunch_vals) in enumerate(zip(times, values)):
@@ -233,13 +233,17 @@ def combine_cad_measurements(cad_measurements_path, vernier_scan_date):
 
     bunch_length_data = read_bunch_length(bunch_length_path)
     convert_bunch_length_to_distance(bunch_length_data)
+    calculate_bunch_length_scaling(bunch_length_data, vernier_scan_date)
 
     beam_offset_intensity_x_data = read_beam_offset_and_intensity(beam_offset_intensity_x_path)
     beam_offset_intensity_x_data['orientation'] = 'Horizontal'
     beam_offset_intensity_x_data = append_relative_and_set_offsets(beam_offset_intensity_x_data)
+    beam_offset_intensity_x_data = calculate_relative_intensity(beam_offset_intensity_x_data)
     beam_offset_intensity_y_data = read_beam_offset_and_intensity(beam_offset_intensity_y_path)
     beam_offset_intensity_y_data['orientation'] = 'Vertical'
     beam_offset_intensity_y_data = append_relative_and_set_offsets(beam_offset_intensity_y_data)
+    beam_offset_intensity_y_data = calculate_relative_intensity(beam_offset_intensity_y_data)
+
     boi_data = pd.concat([beam_offset_intensity_x_data, beam_offset_intensity_y_data], axis=0, ignore_index=True)
 
     crossing_angle_data = read_crossing_angle(crossing_angle_path)
@@ -513,6 +517,44 @@ def convert_bunch_length_to_distance(data):
     data['yellow_bunch_length'] = data['yellow_bunch_length'] * c * 1e-9 / (2 * np.sqrt(2 * np.log(2)))
 
 
+def calculate_bunch_length_scaling(data, vernier_scan_date):
+    """
+    Calculate the scaling factor for the bunch length data.
+    Currently use fits of beam profiles for simulation. These fits are for specific times during each scan.
+    Use bunch length measurements through the scan to scale the widths of these parameterized profiles.
+    :param data: DataFrame of bunch length data.
+    :param vernier_scan_date: Date of the Vernier scan.
+    """
+    bnl_tz = pytz.timezone('America/New_York')
+    profile_times = {
+        'Jul11': bnl_tz.localize(datetime(2024, 7, 11, 14, 3)),
+        'Aug12': bnl_tz.localize(datetime(2024, 8, 12, 14, 29))
+    }
+    profile_time = profile_times[vernier_scan_date]
+
+    # Estimate the bunch length at profile_time using linear interpolation from two bracketing measurements
+    # Find two bracketing measurements
+    before_time = data['time'][data['time'] < profile_time].max()
+    after_time = data['time'][data['time'] > profile_time].min()
+    dt = (after_time - before_time).total_seconds()
+    d = (profile_time - before_time).total_seconds()
+
+    # Linearly interpolate the bunch length at profile_time
+    before_blue_bunch_length = data['blue_bunch_length'][data['time'] == before_time].values[0]
+    after_blue_bunch_length = data['blue_bunch_length'][data['time'] == after_time].values[0]
+    dl_blue = after_blue_bunch_length - before_blue_bunch_length
+    profile_blue_bunch_length = before_blue_bunch_length + dl_blue * d / dt
+
+    before_yellow_bunch_length = data['yellow_bunch_length'][data['time'] == before_time].values[0]
+    after_yellow_bunch_length = data['yellow_bunch_length'][data['time'] == after_time].values[0]
+    dl_yellow = after_yellow_bunch_length - before_yellow_bunch_length
+    profile_yellow_bunch_length = before_yellow_bunch_length + dl_yellow * d / dt
+
+    # Calculate the blue and yellow scaling factors and add them to the DataFrame
+    data['blue_bunch_length_scaling'] = data['blue_bunch_length'] / profile_blue_bunch_length
+    data['yellow_bunch_length_scaling'] = data['yellow_bunch_length'] / profile_yellow_bunch_length
+
+
 def append_relative_and_set_offsets(boi_data):
     """
     Append the relative and intended offsets to the beam offset and intensity data DataFrame.
@@ -543,6 +585,21 @@ def append_relative_and_set_offsets(boi_data):
 
         new_boi_data.at[i, 'offset_avg_val'] = avg_meas_offset
         new_boi_data.at[i, 'offset_set_val'] = closest_set_val
+
+    return new_boi_data
+
+
+def calculate_relative_intensity(boi_data):
+    """
+    Calculate the beam intensity at each point (N_y * N_b) relative to the first point.
+    """
+    new_boi_data = boi_data.copy()
+
+    # Calculate the relative intensities
+    new_boi_data['intensity_rel_wcm'] = (new_boi_data['wcm_yellow'] * new_boi_data['wcm_blue']) / (
+            new_boi_data['wcm_yellow'].iloc[0] * new_boi_data['wcm_blue'].iloc[0])
+    new_boi_data['intensity_rel_dcct'] = (new_boi_data['dcct_yellow'] * new_boi_data['dcct_blue']) / (
+            new_boi_data['dcct_yellow'].iloc[0] * new_boi_data['dcct_blue'].iloc[0])
 
     return new_boi_data
 
