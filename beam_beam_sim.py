@@ -21,9 +21,134 @@ from BunchDensity import BunchDensity
 
 def main():
     # animate_bunch_density_propagation()
-    animate_bunch_collision()
+    # animate_bunch_collision()
     # simulate_vernier_scan()
+    hourglass_head_on_z_dist_comparison()
     print('donzo')
+
+
+def hourglass_head_on_z_dist_comparison():
+    """
+    Plot the z-vertex distribution for head-on collisions with and without the hourglass effect.
+    """
+    mu = '\u03BC'
+    # Initialize two bunches
+    bunch1 = BunchDensity()
+    bunch2 = BunchDensity()
+    beta_star_off = None  # cm
+    beta_star_on = 85  # cm
+
+    # x_offset = 0.  # microns  Head on
+    x_offset = 700.  # microns  Peripheral
+
+    # Set initial positions, velocities, and widths for the two bunches
+    bunch1.set_initial_z(-600.e4)  # um Initial z position of bunch 1
+    bunch1.set_offsets(x_offset, 0.)  # um Initial x and y offsets of bunch 1
+    bunch1.set_beta(0., 0., 1.)  # Dimensionless velocity of bunch 1 moving in +z direction
+    bunch1.set_sigma(170., 170., 1.1e6)  # um Width of bunch 1 in x, y, z
+    bunch1.set_angles(-0.0e-3, 0.0)  # rad Rotate bunch 1 in the x-z and y-z planes
+    bunch1.beta_star = beta_star_off
+
+    bunch2.set_initial_z(600.e4)  # um Initial z position of bunch 2
+    bunch2.set_offsets(0., 0.)  # um Initial x and y offsets of bunch 2
+    bunch2.set_beta(0., 0., -1.)  # Dimensionless velocity of bunch 2 moving in -z direction
+    bunch2.set_sigma(170., 170., 1.1e6)  # um Width of bunch 2 in x, y, z
+    bunch2.set_angles(-0.0e-3, 0.0)  # rad Rotate bunch 2 in the x-z and y-z planes
+    bunch2.beta_star = beta_star_off
+
+    n_propagation_points = 50
+    n_density_points = 101
+    xy_lim_sigma = 10
+    z_lim_size = 1.2
+
+    # Set timestep for propagation
+    bunch1.dt = bunch2.dt = (bunch2.initial_z - bunch1.initial_z) / bunch1.c / n_propagation_points
+
+    # Create a grid of points for the x-z and y-z planes
+    x = np.linspace(-xy_lim_sigma * bunch1.transverse_sigma[0], xy_lim_sigma * bunch1.transverse_sigma[0], n_density_points)
+    y = np.linspace(-xy_lim_sigma * bunch1.transverse_sigma[1], xy_lim_sigma * bunch1.transverse_sigma[1], n_density_points)
+    z = np.linspace(-2.5e6, 2.5e6, n_density_points + 5)
+
+    X_3d, Y_3d, Z_3d = np.meshgrid(x, y, z, indexing='ij')  # For 3D space
+
+    z_cm = z / 1e4
+
+    integrated_density_product_z_hg_off = np.zeros_like(z)
+    for i in range(n_propagation_points):
+        print(f'Beta Star Off Propagation {i}/{n_propagation_points}')
+        density1_xyz = bunch1.density(X_3d, Y_3d, Z_3d)
+        density2_xyz = bunch2.density(X_3d, Y_3d, Z_3d)
+
+        # Calculate the density product
+        density_product_xyz = density1_xyz * density2_xyz
+
+        # Sum over x and y to get the density product in z
+        integrated_density_product_z_hg_off += np.sum(density_product_xyz, axis=(0, 1))
+
+        bunch1.propagate()
+        bunch2.propagate()
+
+    integrated_density_product_z_hg_off /= n_propagation_points
+
+    # Set initial positions, velocities, and widths for the two bunches
+    bunch1.set_initial_z(-600.e4)  # um Initial z position of bunch 1
+    bunch1.set_offsets(x_offset, 0.)  # um Initial x and y offsets of bunch 1
+    bunch1.set_beta(0., 0., 1.)  # Dimensionless velocity of bunch 1 moving in +z direction
+    bunch1.set_sigma(170., 170., 1.1e6)  # um Width of bunch 1 in x, y, z
+    bunch1.set_angles(-0.0e-3, 0.0)  # rad Rotate bunch 1 in the x-z and y-z planes
+    bunch1.set_beta_star(beta_star_on)
+
+    bunch2.set_initial_z(600.e4)  # um Initial z position of bunch 2
+    bunch2.set_offsets(0., 0.)  # um Initial x and y offsets of bunch 2
+    bunch2.set_beta(0., 0., -1.)  # Dimensionless velocity of bunch 2 moving in -z direction
+    bunch2.set_sigma(170., 170., 1.1e6)  # um Width of bunch 2 in x, y, z
+    bunch2.set_angles(-0.0e-3, 0.0)  # rad Rotate bunch 2 in the x-z and y-z planes
+    bunch2.set_beta_star(beta_star_on)
+
+    integrated_density_product_z_hg_on = np.zeros_like(z)
+    for i in range(n_propagation_points):
+        print(f'Beta Star On Propagation {i}/{n_propagation_points}')
+        density1_xyz = bunch1.density(X_3d, Y_3d, Z_3d)
+        density2_xyz = bunch2.density(X_3d, Y_3d, Z_3d)
+
+        # Calculate the density product
+        density_product_xyz = density1_xyz * density2_xyz
+
+        # Sum over x and y to get the density product in z
+        integrated_density_product_z_hg_on += np.sum(density_product_xyz, axis=(0, 1))
+
+        bunch1.propagate()
+        bunch2.propagate()
+
+    integrated_density_product_z_hg_on /= n_propagation_points
+
+    fig, ax = plt.subplots(figsize=(7, 3), dpi=144)
+    p0 = [max(integrated_density_product_z_hg_off), 1.e6, 0.]
+    print(f'Initial guess: {p0}')
+    popt_off, pcov_off = cf(gaus_1d, z, integrated_density_product_z_hg_off, p0=p0)
+    popt_on, pcov_on = cf(gaus_1d, z, integrated_density_product_z_hg_on, p0=p0)
+    ax.plot(z_cm, integrated_density_product_z_hg_off, color='black', label='Hourglass Effect Off')
+    ax.plot(z_cm, integrated_density_product_z_hg_on, color='red', label='Hourglass Effect On')
+    integral_ratio = np.sum(integrated_density_product_z_hg_on) / np.sum(integrated_density_product_z_hg_off)
+    width_ratio = popt_on[1] / popt_off[1]
+    width_percent = (1 - width_ratio) * 100
+    offset_str = fr'Offset: {x_offset:.0f}{mu}m'
+    if integral_ratio < 1:
+        integral_percent = (1 - integral_ratio) * 100
+        percent_str = f'{integral_percent:.0f}% fewer collisions'
+    else:
+        integral_percent = (integral_ratio - 1) * 100
+        percent_str = f'{integral_percent:.0f}% more collisions'
+    ax.annotate(f'{offset_str}\n{percent_str}\nwith hourglass effect', (0.03, 0.95),
+                xycoords='axes fraction', va='top', ha='left', bbox=dict(facecolor='wheat', alpha=0.3))
+
+    ax.set_xlabel('z (cm)')
+    ax.set_ylabel('Integrated Density Product')
+    ax.legend(loc='upper right')
+    fig.tight_layout()
+    fig.subplots_adjust(left=0.06, right=0.99, top=0.94, bottom=0.145)
+
+    plt.show()
 
 
 def simulate_vernier_scan():

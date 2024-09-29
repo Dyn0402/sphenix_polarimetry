@@ -71,6 +71,14 @@ class BunchDensity:
         self.beta = np.array([x, y, z], dtype=np.float64)
         self.reset = True
 
+    def set_beta_star(self, beta_star):
+        """
+        Set the beta star value for the bunch.
+        :param beta_star: float Beta star value in cm
+        """
+        self.beta_star = beta_star
+        self.reset = True
+
     def set_sigma(self, x, y, z=None):
         """
         Set the width of the bunch in the lab frame.

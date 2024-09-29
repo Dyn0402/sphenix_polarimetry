@@ -11,8 +11,59 @@ Created as sphenix_polarimetry/hourglass_visualization
 import numpy as np
 import matplotlib.pyplot as plt
 
+mu = '\u03BC'
+
 
 def main():
+    # visualize_two_beams()
+    visualize_one_beam()
+
+    plt.show()
+
+    print('donzo')
+
+
+def visualize_one_beam():
+    beta_star = 85  # cm  Scaling factor for x^2/a^2 term
+    sigma = 170  # um  Full beam width at collision point
+
+    z = np.linspace(-200, 200, 400)  # cm  z values
+
+    y1 = sigma * f(z, beta_star, 0)  # um  show the 1 sigma line
+    y1_reflected = -y1  # um  reflected 1 sigma line
+
+    # Plot the original and reflected curves
+    fig, ax = plt.subplots(figsize=(7, 3), dpi=144)
+    ax.plot(z, y1, color='blue')
+    ax.plot(z, y1_reflected, color='blue')
+    ax.fill_between(z, y1, y1_reflected, color='blue', alpha=0.1)
+
+    ax.axhline(0, color='gray', linestyle='-', alpha=0.5)
+    ax.axvline(0, color='gray', linestyle='-', alpha=0.5)
+
+    # Draw a vertical line at the collision point from y=0 to y=1 sigma, label this as 1 sigma
+    y1_z0 = sigma * f(0, beta_star, 0)
+    ax.plot([0, 0], [0, y1_z0], color='black', linestyle='-', alpha=1)
+    ax.text(0, y1_z0 / 2, r'$\sigma_0$', verticalalignment='center', horizontalalignment='right')
+
+    # Draw a vertical line at 1 beta* from y=0 to y1 at this point, label this as 2 sigma
+    y1_z_beta = sigma * f(beta_star, beta_star, 0)
+    ax.plot([beta_star, beta_star], [0, y1_z_beta], color='black', linestyle='-', alpha=1)
+    ax.text(beta_star, y1_z_beta / 2, r'$\sqrt{2}\sigma_0$', verticalalignment='center', horizontalalignment='left')
+
+    # Draw a horizontal line between 0 and beta* at y=1 sigma, label this as beta*
+    ax.plot([0, beta_star], [y1_z0 / 5, y1_z0 / 5], color='black', linestyle='-', alpha=1)
+    ax.text(beta_star / 2, y1_z0 / 5, r'$\beta^*$', verticalalignment='bottom', horizontalalignment='center')
+
+    ax.set_xlabel('z (cm)')
+    ax.set_ylabel(f'y ({mu}m)')
+
+    # ax.grid(True)
+    fig.tight_layout()
+    fig.subplots_adjust(left=0.1, right=0.995, top=0.99, bottom=0.14)
+
+
+def visualize_two_beams():
     # Parameters for the blue curves
     a_blue = 0.5  # Scaling factor for x^2/a^2 term
     b_blue = 0  # Vertical shift for blue
@@ -71,11 +122,6 @@ def main():
     fig_overlap, ax_overlap = plt.subplots()
     ax_overlap.plot(z, overlap, color='red', label='Overlap')
     fig_overlap.tight_layout()
-
-    plt.show()
-
-    print('donzo')
-
 
 # Function for the original curve
 def f(x, a, b):
