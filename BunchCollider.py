@@ -43,6 +43,7 @@ class BunchCollider:
         self.z_bounds = (-265. * 1e4, 265. * 1e4)
 
         self.gaus_smearing_sigma = None
+        self.gaus_z_efficiency_width = None
 
         self.x_lim_sigma = 10
         self.y_lim_sigma = 10
@@ -104,6 +105,9 @@ class BunchCollider:
 
     def set_gaus_smearing_sigma(self, sigma):
         self.gaus_smearing_sigma = sigma
+
+    def set_gaus_z_efficiency_width(self, width):
+        self.gaus_z_efficiency_width = width
 
     def set_bunch_delays(self, delay1, delay2):
         self.bunch1.set_delay(delay1)
@@ -243,6 +247,8 @@ class BunchCollider:
     def get_z_density_dist(self):
         z_vals = (self.z - self.z_shift) / 1e4  # um to cm
         z_dist = self.amplitude * np.sum(self.average_density_product_xyz, axis=(0, 1))
+        if self.gaus_z_efficiency_width is not None:
+            z_dist = z_dist * gaus(z_vals, 1, 0, self.gaus_z_efficiency_width)
         if self.gaus_smearing_sigma is not None:
             z_spacing = z_vals[1] - z_vals[0]
             z_dist = gaussian_filter1d(z_dist, self.gaus_smearing_sigma / z_spacing)
@@ -267,3 +273,7 @@ class BunchCollider:
                 f'bunch1_beta_original: {self.bunch1_beta_original}, bunch2_beta_original: {self.bunch2_beta_original}\n'
                 f'\nbunch1: {self.bunch1}\n'
                 f'\nbunch2: {self.bunch2}\n')
+
+
+def gaus(x, a, b, c):
+    return a * np.exp(-(x - b) ** 2 / (2 * c ** 2))

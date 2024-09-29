@@ -27,7 +27,7 @@ def main():
     # crossing_angle(cad_measurements_path, vernier_scan_date)
     # bunch_length(cad_measurements_path, vernier_scan_date)
     # beam_offset_and_intensity(cad_measurements_path, vernier_scan_date)
-    # plot_beam_longitudinal_measurements(cad_measurements_path, vernier_scan_date, False)
+    plot_beam_longitudinal_measurements(cad_measurements_path, vernier_scan_date, False)
     # plot_beam_longitudinal_measurements(cad_measurements_path, 'Aug12', False)
     combine_cad_measurements(cad_measurements_path, vernier_scan_date)
     plt.show()
